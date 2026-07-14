@@ -4,9 +4,10 @@ import com.example.georadar_analyser.repository.TrackSectionRepository;
 import com.example.georadar_analyser.service.GeoradarImportService;
 import com.example.georadar_analyser.view.Georadar3DViewer;
 import org.springframework.boot.CommandLineRunner;
-import org.springframework.boot.SpringApplication;
+import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.context.ApplicationContext;
+import org.springframework.boot.builder.SpringApplicationBuilder;
+import org.springframework.context.ConfigurableApplicationContext;
 
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
@@ -18,7 +19,6 @@ public class GeoradarAnalyserApplication implements CommandLineRunner {
     private final GeoradarImportService importService;
     private final Georadar3DViewer viewer;
 
-    // Внедряем все наши слои в главный класс приложения
     public GeoradarAnalyserApplication(TrackSectionRepository sectionRepository,
                                        GeoradarImportService importService,
                                        Georadar3DViewer viewer) {
@@ -28,45 +28,64 @@ public class GeoradarAnalyserApplication implements CommandLineRunner {
     }
 
     public static void main(String[] args) {
-        SpringApplication.run(GeoradarAnalyserApplication.class, args);
+        // Профессиональный трюк: отключаем встроенный веб-сервер для локального запуска графики 3D
+        new SpringApplicationBuilder(GeoradarAnalyserApplication.class)
+                .web(WebApplicationType.NONE)
+                .run(args);
     }
 
-    /**
-     * Этот метод автоматически выполнится СРАЗУ после старта Spring Boot.
-     * Здесь мы сымитируем загрузку тестовых данных и откроем наше 3D-окно.
-     */
     @Override
     public void run(String... args) throws Exception {
-        // Передаем репозиторий в статический контекст JavaFX
         Georadar3DViewer.initDependencies(sectionRepository);
 
-        System.out.println("=== Инициализация тестовых данных георадара ===");
+        System.out.println("=== Генерация бинарного тест-файла Excel ===");
 
-        // Создаем имитацию Excel-файла (CSV-поток) для теста нашего парсера.
-        // Метраж (X) | Профиль (Y) | Глубина (Z) | Имя слоя
-        String csvData = "Метраж,Профиль,Глубина,Слой\n" +
-                "10.0,пр1,0.30,балласт\n" +
-                "10.0,пр1,0.60,песок\n" +
-                "11.0,пр1,0.35,балласт\n" +
-                "11.0,пр1,0.65,песок\n" +
-                "12.0,пр1,0.55,балласт\n" + // <-- Имитируем просадку балласта (уход глубины с 0.35 до 0.55м)
-                "12.0,пр1,0.70,песок\n" +
+        try (org.apache.poi.xssf.usermodel.XSSFWorkbook workbook = new org.apache.poi.xssf.usermodel.XSSFWorkbook()) {
+            org.apache.poi.ss.usermodel.Sheet sheet = workbook.createSheet("Профили");
 
-                "10.0,пр2,0.32,балласт\n" +
-                "10.0,пр2,0.62,песок\n" +
-                "11.0,пр2,0.34,балласт\n" +
-                "11.0,пр2,0.64,песок\n" +
-                "12.0,пр2,0.58,балласт\n" + // <-- Просадка по оси пути
-                "12.0,пр2,0.72,песок\n";
+            Object[][] data = {
+                    {"Метраж", "Профиль", "Глубина", "Слой"},
+                    {10.0f, "пр1", 0.30f, "балласт"},
+                    {10.0f, "пр1", 0.60f, "песок"},
+                    {11.0f, "пр1", 0.35f, "балласт"},
+                    {11.0f, "пр1", 0.65f, "песок"},
+                    {12.0f, "пр1", 0.55f, "балласт"}, // Имитируем просадку на 12 метрах
+                    {12.0f, "пр1", 0.70f, "песок"},
 
-        ByteArrayInputStream fakeExcelStream = new ByteArrayInputStream(csvData.getBytes(StandardCharsets.UTF_8));
+                    {10.0f, "пр2", 0.32f, "балласт"},
+                    {10.0f, "пр2", 0.62f, "песок"},
+                    {11.0f, "пр2", 0.34f, "балласт"},
+                    {11.0f, "пр2", 0.64f, "песок"},
+                    {12.0f, "пр2", 0.58f, "балласт"}, // Имитируем просадку по оси пути
+                    {12.0f, "пр2", 0.72f, "песок"}
+            };
 
-        // Тестируем всю нашу цепочку: парсим поток и сохраняем в H2 базу данных
-        var savedSection = importService.importExcelData(fakeExcelStream, "Перегон Москва-Рязань, ПК45", 2);
+            int rowCount = 0;
+            for (Object[] dataRow : data) {
+                org.apache.poi.ss.usermodel.Row row = sheet.createRow(rowCount++);
+                int columnCount = 0;
+                for (Object field : dataRow) {
+                    org.apache.poi.ss.usermodel.Cell cell = row.createCell(columnCount++);
+                    if (field instanceof String) {
+                        cell.setCellValue((String) field);
+                    } else if (field instanceof Float) {
+                        cell.setCellValue((Float) field);
+                    }
+                }
+            }
 
-        System.out.println("=== Запуск 3D Визуализатора JavaFX ===");
-        // Открываем графическое 3D-окно для сохраненного участка!
-        viewer.viewSection(savedSection.getId());
+            java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream();
+            workbook.write(bos);
+            byte[] excelBytes = bos.toByteArray();
+            java.io.ByteArrayInputStream realExcelStream = new java.io.ByteArrayInputStream(excelBytes);
+
+            System.out.println("=== Инициализация тестовых данных георадара ===");
+            var savedSection = importService.importExcelData(realExcelStream, "Перегон Москва-Рязань, ПК45", 2);
+
+            System.out.println("=== Запуск 3D Визуализатора JavaFX ===");
+            viewer.viewSection(savedSection.getId());
+        }
     }
 }
+
 

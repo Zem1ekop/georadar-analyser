@@ -18,95 +18,102 @@ import java.util.*;
 @Component
 public class Georadar3DViewer extends Application {
 
-    // Сделаем репозиторий статическим, чтобы JavaFX-поток имел к нему доступ при старте окна
     private static TrackSectionRepository sectionRepository;
     private static Long targetSectionId;
 
-    // Конструктор по умолчанию необходим для запуска JavaFX
+    private double mousePosX;
+    private double mousePosY;
+    private double mouseOldX;
+    private double mouseOldY;
+
     public Georadar3DViewer() {}
 
     public static void initDependencies(TrackSectionRepository repository) {
         sectionRepository = repository;
     }
 
-    /**
-     * Метод для вызова 3D-окна из любой части Spring Boot приложения
-     */
     public void viewSection(Long sectionId) {
         targetSectionId = sectionId;
-        // Запускаем поток JavaFX сцены
         Application.launch(Georadar3DViewer.class);
     }
 
     @Override
     public void start(Stage primaryStage) {
-        // 1. Извлекаем данные из БД
-        Optional<TrackSection> sectionOpt = sectionRepository.findById(targetSectionId);
+        Optional<TrackSection> sectionOpt = sectionRepository.findByIdWithWithAllData(targetSectionId);
         if (sectionOpt.isEmpty()) {
             System.err.println("Ошибка: Участок ж/д пути с ID " + targetSectionId + " не найден в БД!");
             return;
         }
         TrackSection section = sectionOpt.get();
 
-        // Создаем корневую 3D группу
         Group root3D = new Group();
 
-        // Палитра цветов для слоев георадара (Балласт - серый, Песок - желтый, Глина/Земля - коричневый)
+        // Разделяем контейнеры для правильной CAD-математики вращения:
+        Group globalGroup = new Group(); // Этот узел будет крутиться вокруг строгой вертикали экрана
+        Group modelGroup = new Group();  // Этот узел хранит сами 3D-сетки слоев
+
+        globalGroup.getChildren().add(modelGroup);
+        root3D.getChildren().add(globalGroup);
+
         Map<String, Color> layerColors = Map.of(
                 "балласт", Color.GRAY,
                 "песок", Color.GOLD,
                 "земляное полотно", Color.SADDLEBROWN
         );
 
-        // 2. Группируем профили ж/д пути
-        List<RadarProfile> profiles = section.getProfiles();
-        if (profiles.size() < 2) {
+        List<RadarProfile> sortedProfiles = new ArrayList<>(section.getProfiles());
+        sortedProfiles.sort(Comparator.comparing(RadarProfile::getLateralOffset));
+
+        if (sortedProfiles.size() < 2) {
             System.err.println("Ошибка: Для построения 3D поверхности нужно как минимум 2 параллельных профиля!");
             return;
         }
 
-        // Вытаскиваем уникальные имена слоев на этом участке
         Set<String> layerNames = new HashSet<>();
-        for (RadarProfile p : profiles) {
+        for (RadarProfile p : sortedProfiles) {
             for (LayerPoint pt : p.getPoints()) {
                 layerNames.add(pt.getLayerName().toLowerCase().trim());
             }
         }
 
-        // 3. Строим 3D-сетку (Mesh) отдельно для каждого конструктивного слоя
         for (String layer : layerNames) {
             TriangleMesh mesh = new TriangleMesh();
-
-            // Списки для индексов точек
             List<Float> pointsList = new ArrayList<>();
 
-            // На ж/д путях шаг оцифровки одинаковый, считаем количество точек на один профиль
-            int pointsPerProfile = profiles.get(0).getPoints().size();
+            int pointsPerProfile = 0;
+            boolean firstProfileCounted = false;
 
-            // Заполняем массив вершин (Vertices)
-            for (RadarProfile profile : profiles) {
-                float y = profile.getLateralOffset(); // Расстояние от оси пути (ширина)
+            for (RadarProfile profile : sortedProfiles) {
+                float y = profile.getLateralOffset();
 
+                List<LayerPoint> layerPoints = new ArrayList<>();
                 for (LayerPoint pt : profile.getPoints()) {
                     if (pt.getLayerName().toLowerCase().trim().equals(layer)) {
-                        pointsList.add(pt.getDistanceX()); // Координата X (длина пути)
-                        pointsList.add(y);                 // Координата Y (ширина пути)
-                        // Инвертируем Z в минус, чтобы просадки уходили физически "вниз"
-                        pointsList.add(-pt.getDepthZ() * 10f); // Умножаем на 10 для наглядности рельефа
+                        layerPoints.add(pt);
                     }
+                }
+                layerPoints.sort((p1, p2) -> Float.compare(p1.getDistanceX(), p2.getDistanceX()));
+
+                if (!firstProfileCounted) {
+                    pointsPerProfile = layerPoints.size();
+                    firstProfileCounted = true;
+                }
+
+                for (LayerPoint pt : layerPoints) {
+                    pointsList.add((pt.getDistanceX() - 11.0f) * 40f);
+                    pointsList.add(y * 40f);
+                    pointsList.add(-pt.getDepthZ() * 60f);
                 }
             }
 
-            // Переносим координаты точек в Mesh
+            if (pointsPerProfile < 2) continue;
+
             float[] pointsArray = new float[pointsList.size()];
             for (int i = 0; i < pointsList.size(); i++) pointsArray[i] = pointsList.get(i);
             mesh.getPoints().setAll(pointsArray);
-
-            // Добавляем фиктивную текстурную координату (обязательно для JavaFX)
             mesh.getTexCoords().addAll(0, 0);
 
-            // Натягиваем сетку полигонов (Faces) — связываем соседние точки в треугольники
-            int numProfiles = profiles.size();
+            int numProfiles = sortedProfiles.size();
             for (int p = 0; p < numProfiles - 1; p++) {
                 for (int t = 0; t < pointsPerProfile - 1; t++) {
                     int p0 = p * pointsPerProfile + t;
@@ -114,38 +121,85 @@ public class Georadar3DViewer extends Application {
                     int p2 = (p + 1) * pointsPerProfile + t;
                     int p3 = p2 + 1;
 
-                    // Задаем треугольники (точки + индекс текстуры 0)
                     mesh.getFaces().addAll(p0, 0, p2, 0, p1, 0);
                     mesh.getFaces().addAll(p1, 0, p2, 0, p3, 0);
                 }
             }
 
-            // Создаем визуальный 3D объект на сцене
             MeshView meshView = new MeshView(mesh);
+            meshView.setCullFace(javafx.scene.shape.CullFace.NONE);
+
             PhongMaterial material = new PhongMaterial();
-            material.setDiffuseColor(layerColors.getOrDefault(layer, Color.CYAN).deriveColor(0, 1, 1, 0.7)); // 0.7 - легкая прозрачность
+            material.setDiffuseColor(layerColors.getOrDefault(layer, Color.CYAN).deriveColor(0, 1, 1, 0.75));
             meshView.setMaterial(material);
 
-            // Добавляем слой в общую 3D-группу
-            root3D.getChildren().add(meshView);
+            modelGroup.getChildren().add(meshView);
         }
 
-        // 4. Настраиваем камеру обзора
+        PointLight pointLight = new PointLight(Color.WHITE);
+        pointLight.setTranslateX(0);
+        pointLight.setTranslateY(-100);
+        pointLight.setTranslateZ(-200);
+        root3D.getChildren().add(pointLight);
+
+        AmbientLight ambientLight = new AmbientLight(Color.rgb(80, 80, 80));
+        root3D.getChildren().add(ambientLight);
+
         PerspectiveCamera camera = new PerspectiveCamera(true);
         camera.setNearClip(0.1);
         camera.setFarClip(1000.0);
-        camera.setTranslateZ(-150); // Отодвигаем камеру назад, чтобы увидеть весь масштаб
-        camera.setTranslateX(50);
-        camera.setTranslateY(0);
+        camera.setTranslateZ(-350);
 
-        // Собираем сцену
         Scene scene = new Scene(root3D, 1024, 768, true, SceneAntialiasing.BALANCED);
         scene.setCamera(camera);
-        scene.setFill(Color.LIGHTBLUE); // Цвет неба/фона
+        scene.setFill(Color.LIGHTBLUE);
+
+        // --- НАСТРОЙКА ПРАВИЛЬНЫХ НЕЗАВИСИМЫХ ОСЕЙ ВРАЩЕНИЯ ---
+        // rotateY вешаем на globalGroup — это даст чистое вращение вокруг ВЕРТИКАЛЬНОЙ оси экрана
+        javafx.scene.transform.Rotate rotateY = new javafx.scene.transform.Rotate(-30, javafx.geometry.Point3D.ZERO.add(0, 1, 0));
+        globalGroup.getTransforms().add(rotateY);
+
+        // rotateX вешаем на внутреннюю modelGroup — это даст наклон путей к нам/от нас
+        javafx.scene.transform.Rotate rotateX = new javafx.scene.transform.Rotate(45, javafx.geometry.Point3D.ZERO.add(1, 0, 0));
+        modelGroup.getTransforms().add(rotateX);
+
+        scene.setOnMousePressed(me -> {
+            mousePosX = me.getSceneX();
+            mousePosY = me.getSceneY();
+        });
+
+        scene.setOnMouseDragged(me -> {
+            mouseOldX = mousePosX;
+            mouseOldY = mousePosY;
+            mousePosX = me.getSceneX();
+            mousePosY = me.getSceneY();
+            double mouseDeltaX = (mousePosX - mouseOldX);
+            double mouseDeltaY = (mousePosY - mouseOldY);
+
+            // ЛЕВАЯ КНОПКА МЫШИ — Чистое, ортогональное вращение
+            if (me.isPrimaryButtonDown()) {
+                // Движение мыши влево-вправо вращает ВСЮ сцену вокруг вертикали экрана
+                rotateY.setAngle(rotateY.getAngle() + mouseDeltaX * 0.4);
+                // Движение мыши вверх-вниз наклоняет рельеф путей к наблюдателю
+                rotateX.setAngle(rotateX.getAngle() - mouseDeltaY * 0.4);
+            }
+            // ПРАВАЯ КНОПКА МЫШИ — Сдвиг (панорамирование) всей сцены
+            else if (me.isSecondaryButtonDown()) {
+                camera.setTranslateX(camera.getTranslateX() - mouseDeltaX * 0.2);
+                camera.setTranslateY(camera.getTranslateY() - mouseDeltaY * 0.2);
+            }
+        });
+
+        scene.setOnScroll(se -> {
+            double z = camera.getTranslateZ();
+            camera.setTranslateZ(z + se.getDeltaY() * 0.8);
+        });
 
         primaryStage.setTitle("3D Визуализация конструктивных слоев ж/д пути и просадок грунта");
         primaryStage.setScene(scene);
         primaryStage.show();
     }
 }
+
+
 

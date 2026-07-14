@@ -27,7 +27,7 @@ public class RadarProfile {
     private TrackSection trackSection;
 
     @OneToMany(mappedBy = "radarProfile", cascade = CascadeType.ALL, orphanRemoval = true)
-    private java.util.List<LayerPoint> points = new java.util.ArrayList<>();
+    private java.util.Set<LayerPoint> points = new java.util.LinkedHashSet<>();
 
 }
 

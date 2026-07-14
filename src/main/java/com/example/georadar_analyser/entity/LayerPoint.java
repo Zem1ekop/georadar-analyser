@@ -19,13 +19,14 @@ public class LayerPoint {
     private Long id;
 
     @Column(name = "distance_x", nullable = false)
-    private Float distanceX; // Метраж вдоль ж/д пути (ось X)
+    private Float distanceX; // Строго с маленькой буквы d!
 
     @Column(name = "depth_z", nullable = false)
-    private Float depthZ; // Глубина залегания слоя (ось Z)
+    private Float depthZ; // Строго с маленькой буквы d!
 
     @Column(name = "layer_name", nullable = false)
-    private String layerName; // Название слоя ("Балласт", "Песок", "Земляное полотно")
+    private String layerName;
+
 
     // Тысячи точек относятся к одному конкретному профилю (пр1, пр2...)
     @ManyToOne(fetch = FetchType.LAZY)

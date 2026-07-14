@@ -26,7 +26,7 @@ public class TrackSection {
 
     // CascadeType.ALL означает: если мы удалим участок пути, из БД автоматически удалятся и все его профили
     @OneToMany(mappedBy = "trackSection", cascade = CascadeType.ALL, orphanRemoval = true)
-    private java.util.List<RadarProfile> profiles = new java.util.ArrayList<>();
+    private java.util.Set<RadarProfile> profiles = new java.util.LinkedHashSet<>();
 
 }
 
