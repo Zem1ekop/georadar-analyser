@@ -5,15 +5,23 @@ import com.example.georadar_analyser.entity.RadarProfile;
 import com.example.georadar_analyser.entity.TrackSection;
 import com.example.georadar_analyser.repository.TrackSectionRepository;
 import javafx.application.Application;
-import javafx.scene.*;
+import javafx.scene.AmbientLight;
+import javafx.scene.Group;
+import javafx.scene.PerspectiveCamera;
+import javafx.scene.PointLight;
+import javafx.scene.Scene;
+import javafx.scene.SceneAntialiasing;
 import javafx.scene.paint.Color;
 import javafx.scene.paint.PhongMaterial;
 import javafx.scene.shape.MeshView;
 import javafx.scene.shape.TriangleMesh;
+import javafx.scene.input.MouseEvent;
+import javafx.scene.input.ScrollEvent;
 import javafx.stage.Stage;
 import org.springframework.stereotype.Component;
 
 import java.util.*;
+
 
 @Component
 public class Georadar3DViewer extends Application {
@@ -99,10 +107,11 @@ public class Georadar3DViewer extends Application {
                     firstProfileCounted = true;
                 }
 
+                // Переводим отсортированные реальные метры в 3D пространство JavaFX
                 for (LayerPoint pt : layerPoints) {
-                    pointsList.add((pt.getDistanceX() - 11.0f) * 40f);
-                    pointsList.add(y * 40f);
-                    pointsList.add(-pt.getDepthZ() * 60f);
+                    pointsList.add(pt.getDistanceX() * 40f); // Метраж X умножаем на 40
+                    pointsList.add(y * 40f);                 // Смещение Y умножаем на 40
+                    pointsList.add(-pt.getDepthZ() * 80f);   // Высоту Z умножаем на 80 и уводим в минус
                 }
             }
 
@@ -148,11 +157,11 @@ public class Georadar3DViewer extends Application {
         PerspectiveCamera camera = new PerspectiveCamera(true);
         camera.setNearClip(0.1);
         camera.setFarClip(1000.0);
-        camera.setTranslateZ(-350);
 
-        Scene scene = new Scene(root3D, 1024, 768, true, SceneAntialiasing.BALANCED);
-        scene.setCamera(camera);
-        scene.setFill(Color.LIGHTBLUE);
+        // Позиционируем камеру под новый метровый масштаб
+        camera.setTranslateX(200);  // Смещаем фокус камеры к середине 10-метрового участка
+        camera.setTranslateY(-50);  // Слегка приподнимаем камеру над рельсами
+        camera.setTranslateZ(-400); // Отодвигаем камеру на оптимальное расстояние обзора
 
         // --- НАСТРОЙКА ПРАВИЛЬНЫХ НЕЗАВИСИМЫХ ОСЕЙ ВРАЩЕНИЯ ---
         // rotateY вешаем на globalGroup — это даст чистое вращение вокруг ВЕРТИКАЛЬНОЙ оси экрана
@@ -162,6 +171,8 @@ public class Georadar3DViewer extends Application {
         // rotateX вешаем на внутреннюю modelGroup — это даст наклон путей к нам/от нас
         javafx.scene.transform.Rotate rotateX = new javafx.scene.transform.Rotate(45, javafx.geometry.Point3D.ZERO.add(1, 0, 0));
         modelGroup.getTransforms().add(rotateX);
+
+        Scene scene = new Scene(root3D, 1024, 768, true, SceneAntialiasing.BALANCED);
 
         scene.setOnMousePressed(me -> {
             mousePosX = me.getSceneX();
