@@ -8,6 +8,7 @@ import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -15,82 +16,97 @@ import java.io.InputStream;
 import java.util.HashMap;
 import java.util.Map;
 
-@Service // Указывает Spring, что это сервисный слой с бизнес-логикой
+@Service
 public class GeoradarImportService {
 
-    // Логгер для вывода профессиональных логов вместо устаревшего System.out.println
     private static final Logger log = LoggerFactory.getLogger(GeoradarImportService.class);
-
     private final TrackSectionRepository sectionRepository;
 
-    // Внедряем репозиторий через конструктор (лучшая практика Spring)
+    // Автоматически внедряем поправку +0.40м из файла application.properties
+    @Value("${georadar.geometry.axis-to-shoulder-correction:0.0}")
+    private float axisCorrection;
+
     public GeoradarImportService(TrackSectionRepository sectionRepository) {
         this.sectionRepository = sectionRepository;
     }
 
-    /**
-     * Метод открывает Excel, парсит строки и сохраняет данные в БД.
-     * @Transactional гарантирует, что если в середине файла произойдет ошибка,
-     * база данных откатит изменения и в ней не останется "битых" кусков данных.
-     */
     @Transactional
     public TrackSection importExcelData(InputStream inputStream, String lineName, Integer trackNumber) throws Exception {
-        log.info("Запуск импорта данных георадара для ж/д линии: {}", lineName);
+        log.info("Запуск импорта реальных данных Geoscan32 для линии: {}", lineName);
 
-        // Создаем заголовочный объект участка пути
         TrackSection section = new TrackSection();
         section.setLineName(lineName);
         section.setTrackNumber(trackNumber);
         section.setSurveyDate(java.time.LocalDate.now());
 
-        // Кэш для профилей, чтобы не плодить дубликаты (пр1 встретится в файле тысячи раз)
-        Map<String, RadarProfile> profileCache = new HashMap<>();
+        // Кэш профилей. Ключом теперь является само физическое смещение Y из колонки B
+        Map<Float, RadarProfile> profileCache = new HashMap<>();
 
-        // Открываем книгу Excel (XSSFWorkbook читает современные файлы .xlsx)
         try (Workbook workbook = new XSSFWorkbook(inputStream)) {
-            Sheet sheet = workbook.getSheetAt(0); // Берем самый первый лист
+            Sheet sheet = workbook.getSheetAt(0);
 
             for (Row row : sheet) {
-                if (row.getRowNum() == 0) continue; // Пропускаем заголовок (строку 0)
-                if (isRowEmpty(row)) continue;      // Пропускаем пустые строки
+                if (row.getRowNum() == 0) continue; // Пропускаем шапку таблицы
+                if (isRowEmpty(row)) continue;
 
                 try {
-                    // Читаем ячейки: 0 - Метраж, 1 - Профиль, 2 - Глубина, 3 - Имя слоя
-                    float distanceX = (float) row.getCell(0).getNumericCellValue();
-                    String profileName = row.getCell(1).getStringCellValue();
-                    float depthZ = (float) row.getCell(2).getNumericCellValue();
-                    String layerName = row.getCell(3).getStringCellValue();
+                    // 1. Читаем координату X (Колонка А: см -> переводим в МЕТРЫ)
+                    float distanceX = (float) row.getCell(0).getNumericCellValue() / 100.0f;
 
-                    // Ищем профиль в кэше, если его еще не было — создаем и привязываем к участку
-                    RadarProfile profile = profileCache.computeIfAbsent(profileName, name -> {
+                    // 2. Читаем смещение Y (Колонка B: см -> переводим в МЕТРЫ)
+                    float lateralOffsetY = (float) row.getCell(1).getNumericCellValue() / 100.0f;
+
+                    // Получаем из кэша или создаем профиль на основе его смещения Y
+                    RadarProfile profile = profileCache.computeIfAbsent(lateralOffsetY, offset -> {
                         RadarProfile newProfile = new RadarProfile();
-                        newProfile.setProfileName(name);
+                        newProfile.setProfileName("Профиль Y=" + offset + "м");
                         newProfile.setTrackSection(section);
-                        newProfile.setLateralOffset(calculateOffset(name)); // Считаем смещение от оси
+                        newProfile.setLateralOffset(offset);
                         section.getProfiles().add(newProfile);
                         return newProfile;
                     });
 
-                    // Создаем оцифрованную точку
-                    LayerPoint point = new LayerPoint();
-                    point.setDistanceX(distanceX);
-                    point.setDepthZ(depthZ);
-                    point.setLayerName(layerName);
-                    point.setRadarProfile(profile);
+                    // 3. Карта слоев: Ключ — индекс колонки в Excel, Значение — имя слоя в системе
+                    Map<Integer, String> columnLayers = Map.of(
+                            2, "балласт",           // Колонка C
+                            3, "песок",             // Колонка D
+                            4, "земляное полотно"   // Колонка E
+                    );
 
-                    profile.getPoints().add(point);
+                    // Разбираем строку «матрицы» на отдельные точки слоев по столбцам
+                    for (Map.Entry<Integer, String> entry : columnLayers.entrySet()) {
+                        int columnIndex = entry.getKey();
+                        String layerName = entry.getValue();
+
+                        Cell cell = row.getCell(columnIndex);
+                        if (cell != null && cell.getCellType() == CellType.NUMERIC) {
+
+                            // Читаем абсолютную глубину из Geoscan32 (в см -> переводим в МЕТРЫ)
+                            float rawDepthZ = (float) cell.getNumericCellValue() / 100.0f;
+
+                            // НАША ИДЕАЛЬНАЯ ФОРМУЛА:
+                            // Физический уровень Z = Высота поверхности профиля - Глубина залегания слоя
+                            float correctedDepthZ = getSurfaceHeight(lateralOffsetY) - rawDepthZ;
+
+                            // Создаем и привязываем точку к профилю
+                            LayerPoint point = new LayerPoint();
+                            point.setDistanceX(distanceX);
+                            point.setDepthZ(correctedDepthZ); // Сюда уйдет точное пространственное значение
+                            point.setLayerName(layerName);
+                            point.setRadarProfile(profile);
+
+                            profile.getPoints().add(point);
+                        }
+                    }
 
                 } catch (Exception e) {
-                    // Если одна строка "битая", логируем ошибку, но продолжаем читать файл дальше
                     log.warn("Ошибка парсинга строки {} в Excel: {}", row.getRowNum(), e.getMessage());
                 }
             }
         }
 
-        // Сохраняем корневой участок. Благодаря CascadeType.ALL, Hibernate сам
-        // запишет в базу и профили, и все вложенные в них тысячи точек!
         TrackSection savedSection = sectionRepository.save(section);
-        log.info("Импорт успешно завершен. Сохранено профилей: {}", savedSection.getProfiles().size());
+        log.info("Импорт Geoscan32 успешно завершен. Создано профилей: {}", savedSection.getProfiles().size());
         return savedSection;
     }
 
@@ -99,18 +115,24 @@ public class GeoradarImportService {
     }
 
     /**
-     * Конвертируем текстовое имя профиля ("пр1", "пр2") в его физическое смещение в метрах от оси ж/д пути.
+     * МЕТОД ОПРЕДЕЛЕНИЯ ВЫСОТЫ ДНЕВНОЙ ПОВЕРХНОСТИ ПРОФИЛЯ
+     * @param lateralOffset - смещение профиля в метрах
+     * @return абсолютная высота поверхности относительно плеча (в метрах)
      */
-    private Float calculateOffset(String profileName) {
-        if (profileName == null) return 0.0f;
-        String lowerName = profileName.toLowerCase().trim();
-
-        switch (lowerName) {
-            case "пр1": return -1.5f; // Левая сторона балластной призмы
-            case "пр3": return 1.5f;  // Правая сторона балластной призмы
-            case "пр2":               // Ось пути
-            default: return 0.0f;
+    private float getSurfaceHeight(float lateralOffset) {
+        // Если профиль идет по оси пути (условно Y = 1.5м или 5.5м),
+        // возвращаем нашу поправку axisCorrection (+0.40м)
+        if (Math.abs(lateralOffset - 1.5f) < 0.1f || Math.abs(lateralOffset - 5.5f) < 0.1f) {
+            return axisCorrection;
         }
+
+        // Междупутье (условно Y = 3.5м) находится посередине между осью и плечом
+        if (Math.abs(lateralOffset - 3.5f) < 0.1f) {
+            return axisCorrection / 2f; // Автоматически вернет +0.20м
+        }
+
+        return 0.0f; // Для обочины (плеч балластной призмы) высота принята за ноль
     }
 }
+
 
