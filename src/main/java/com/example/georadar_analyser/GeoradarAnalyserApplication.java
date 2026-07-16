@@ -38,26 +38,39 @@ public class GeoradarAnalyserApplication implements CommandLineRunner {
     public void run(String... args) throws Exception {
         Georadar3DViewer.initDependencies(sectionRepository);
 
-        System.out.println("=== Генерация бинарного тест-файла Excel ===");
+        System.out.println("=== Генерация бинарного тест-файла Excel (Стандарт Geoscan32) ===");
 
         try (org.apache.poi.xssf.usermodel.XSSFWorkbook workbook = new org.apache.poi.xssf.usermodel.XSSFWorkbook()) {
             org.apache.poi.ss.usermodel.Sheet sheet = workbook.createSheet("Профили");
 
+            // ИМИТИРУЕМ СТРУКТУРУ GEOSCAN32:
+            // Колонка 0: Метраж (см) | Колонка 1: Смещение (см) | ...колонки глубин слоев
             Object[][] data = {
-                    {"Метраж", "Профиль", "Глубина", "Слой"},
-                    {10.0f, "пр1", 0.30f, "балласт"},
-                    {10.0f, "пр1", 0.60f, "песок"},
-                    {11.0f, "пр1", 0.35f, "балласт"},
-                    {11.0f, "пр1", 0.65f, "песок"},
-                    {12.0f, "пр1", 0.55f, "балласт"}, // Имитируем просадку на 12 метрах
-                    {12.0f, "пр1", 0.70f, "песок"},
+                    {"см", "гориз смещ", "глубина", "глубина", "глубина"}, // Шапка таблицы
 
-                    {10.0f, "пр2", 0.32f, "балласт"},
-                    {10.0f, "пр2", 0.62f, "песок"},
-                    {11.0f, "пр2", 0.34f, "балласт"},
-                    {11.0f, "пр2", 0.64f, "песок"},
-                    {12.0f, "пр2", 0.58f, "балласт"}, // Имитируем просадку по оси пути
-                    {12.0f, "пр2", 0.72f, "песок"}
+                    // ПРОФИЛЬ 1: Левое плечо балластной призмы (Y = 0 см)
+                    {0.0f, 0.0f, 30.0f, 60.0f, 100.0f},
+                    {20.0f, 0.0f, 30.0f, 60.0f, 100.0f},
+                    {40.0f, 0.0f, 30.0f, 60.0f, 100.0f},
+                    {60.0f, 0.0f, 30.0f, 60.0f, 100.0f},
+                    {80.0f, 0.0f, 30.0f, 60.0f, 100.0f},
+                    {100.0f, 0.0f, 30.0f, 60.0f, 100.0f},
+
+                    // ПРОФИЛЬ 2: Ось 1-го пути (Y = 150 см). Поверхность выше на 40 см!
+                    {0.0f, 150.0f, 36.6f, 76.6f, 116.6f},   // <-- Абсолютная глубина 36.6 см (местная просадка в начале)
+                    {20.0f, 150.0f, 35.1f, 75.1f, 115.1f},  // <--  Абсолютная глубина 35.1 см
+                    {40.0f, 150.0f, 35.0f, 75.0f, 115.0f},
+                    {60.0f, 150.0f, 35.0f, 75.0f, 115.0f},
+                    {80.0f, 150.0f, 35.0f, 75.0f, 115.0f},
+                    {100.0f, 150.0f, 35.0f, 75.0f, 115.0f},
+
+                    // ПРОФИЛЬ 3: Междупутье (Y = 350 см). Поверхность выше плеча на 20 см.
+                    {0.0f, 350.0f, 30.0f, 65.0f, 105.0f},
+                    {20.0f, 350.0f, 30.0f, 65.0f, 105.0f},
+                    {40.0f, 350.0f, 30.0f, 65.0f, 105.0f},
+                    {60.0f, 350.0f, 30.0f, 65.0f, 105.0f},
+                    {80.0f, 350.0f, 30.0f, 65.0f, 105.0f},
+                    {100.0f, 350.0f, 30.0f, 65.0f, 105.0f}
             };
 
             int rowCount = 0;
@@ -79,13 +92,14 @@ public class GeoradarAnalyserApplication implements CommandLineRunner {
             byte[] excelBytes = bos.toByteArray();
             java.io.ByteArrayInputStream realExcelStream = new java.io.ByteArrayInputStream(excelBytes);
 
-            System.out.println("=== Инициализация тестовых данных георадара ===");
-            var savedSection = importService.importExcelData(realExcelStream, "Перегон Москва-Рязань, ПК45", 2);
+            System.out.println("=== Инициализация текстовых данных георадара ===");
+            var savedSection = importService.importExcelData(realExcelStream, "Тестовый перегон Geoscan32", 1);
 
             System.out.println("=== Запуск 3D Визуализатора JavaFX ===");
             viewer.viewSection(savedSection.getId());
         }
     }
+
 }
 
 

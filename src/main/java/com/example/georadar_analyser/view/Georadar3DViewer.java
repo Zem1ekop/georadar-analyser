@@ -154,26 +154,34 @@ public class Georadar3DViewer extends Application {
         AmbientLight ambientLight = new AmbientLight(Color.rgb(80, 80, 80));
         root3D.getChildren().add(ambientLight);
 
+        // --- НАСТРОЙКА КАМЕРЫ И ЕЁ СОБСТВЕННОГО КОНТЕЙНЕРА ---
         PerspectiveCamera camera = new PerspectiveCamera(true);
         camera.setNearClip(0.1);
         camera.setFarClip(1000.0);
+        camera.setTranslateZ(-400); // Дистанция обзора
 
-        // Позиционируем камеру под новый метровый масштаб
-        camera.setTranslateX(200);  // Смещаем фокус камеры к середине 10-метрового участка
-        camera.setTranslateY(-50);  // Слегка приподнимаем камеру над рельсами
-        camera.setTranslateZ(-400); // Отодвигаем камеру на оптимальное расстояние обзора
+        // Создаем специальный узел-контейнер для управления сдвигом (панорамированием)
+        Group cameraXform = new Group();
+        cameraXform.getChildren().add(camera);
+
+        // Начальное позиционирование контейнера: ставим в центр нашей метровой модели
+        cameraXform.setTranslateX(20);
+        cameraXform.setTranslateY(-10);
+
+        root3D.getChildren().add(cameraXform);
+
+        Scene scene = new Scene(root3D, 1024, 768, true, SceneAntialiasing.BALANCED);
+        scene.setCamera(camera); // Назначаем камеру сцене
+        scene.setFill(Color.LIGHTBLUE); // Цвет неба
 
         // --- НАСТРОЙКА ПРАВИЛЬНЫХ НЕЗАВИСИМЫХ ОСЕЙ ВРАЩЕНИЯ ---
-        // rotateY вешаем на globalGroup — это даст чистое вращение вокруг ВЕРТИКАЛЬНОЙ оси экрана
         javafx.scene.transform.Rotate rotateY = new javafx.scene.transform.Rotate(-30, javafx.geometry.Point3D.ZERO.add(0, 1, 0));
         globalGroup.getTransforms().add(rotateY);
 
-        // rotateX вешаем на внутреннюю modelGroup — это даст наклон путей к нам/от нас
         javafx.scene.transform.Rotate rotateX = new javafx.scene.transform.Rotate(45, javafx.geometry.Point3D.ZERO.add(1, 0, 0));
         modelGroup.getTransforms().add(rotateX);
 
-        Scene scene = new Scene(root3D, 1024, 768, true, SceneAntialiasing.BALANCED);
-
+        // --- УПРАВЛЕНИЕ МЫШЬЮ (ВРАЩЕНИЕ, СДВИГ, ЗУМ) ---
         scene.setOnMousePressed(me -> {
             mousePosX = me.getSceneX();
             mousePosY = me.getSceneY();
@@ -187,20 +195,19 @@ public class Georadar3DViewer extends Application {
             double mouseDeltaX = (mousePosX - mouseOldX);
             double mouseDeltaY = (mousePosY - mouseOldY);
 
-            // ЛЕВАЯ КНОПКА МЫШИ — Чистое, ортогональное вращение
+            // ЛЕВАЯ КНОПКА МЫШИ — Чистое вращение модели вокруг осей
             if (me.isPrimaryButtonDown()) {
-                // Движение мыши влево-вправо вращает ВСЮ сцену вокруг вертикали экрана
                 rotateY.setAngle(rotateY.getAngle() + mouseDeltaX * 0.4);
-                // Движение мыши вверх-вниз наклоняет рельеф путей к наблюдателю
                 rotateX.setAngle(rotateX.getAngle() - mouseDeltaY * 0.4);
             }
-            // ПРАВАЯ КНОПКА МЫШИ — Сдвиг (панорамирование) всей сцены
+            // ПРАВАЯ КНОПКА МЫШИ — Двигаем КОНТЕЙНЕР камеры влево-вправо и вверх-вниз
             else if (me.isSecondaryButtonDown()) {
-                camera.setTranslateX(camera.getTranslateX() - mouseDeltaX * 0.2);
-                camera.setTranslateY(camera.getTranslateY() - mouseDeltaY * 0.2);
+                cameraXform.setTranslateX(cameraXform.getTranslateX() - mouseDeltaX * 0.5);
+                cameraXform.setTranslateY(cameraXform.getTranslateY() - mouseDeltaY * 0.5);
             }
         });
 
+        // КОЛЕСИКО МЫШИ — Приближение и удаление (Zoom) прямой регулировкой Z камеры
         scene.setOnScroll(se -> {
             double z = camera.getTranslateZ();
             camera.setTranslateZ(z + se.getDeltaY() * 0.8);
@@ -211,6 +218,7 @@ public class Georadar3DViewer extends Application {
         primaryStage.show();
     }
 }
+
 
 
 
