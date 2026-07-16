@@ -19,8 +19,15 @@ import javafx.scene.input.MouseEvent;
 import javafx.scene.input.ScrollEvent;
 import javafx.stage.Stage;
 import org.springframework.stereotype.Component;
-
 import java.util.*;
+import javafx.scene.layout.BorderPane;
+import javafx.scene.layout.VBox;
+import javafx.scene.control.Button;
+import javafx.scene.control.Label;
+import javafx.scene.control.TextField;
+import javafx.geometry.Insets;
+import javafx.scene.SubScene;
+
 
 
 @Component
@@ -170,8 +177,54 @@ public class Georadar3DViewer extends Application {
 
         root3D.getChildren().add(cameraXform);
 
-        Scene scene = new Scene(root3D, 1024, 768, true, SceneAntialiasing.BALANCED);
-        scene.setCamera(camera); // Назначаем камеру сцене
+        // --- СБОРКА CAD-ИНТЕРФЕЙСА (ПАНЕЛЬ СЛЕВА, 3D СПРАВА) ---
+        BorderPane mainLayout = new BorderPane();
+
+        // 1. Создаем левую панель управления (сайдбар)
+        VBox sidePanel = new VBox(15); // Расстояние между элементами 15 пикселей
+        sidePanel.setPadding(new Insets(20)); // Отступы от краев панели
+        sidePanel.setStyle("-fx-background-color: #EAEAEA; -fx-border-color: #CCCCCC; -fx-border-width: 0 1 0 0;");
+        sidePanel.setPrefWidth(250); // Фиксированная ширина панели управления
+
+        // Добавляем первых временных «актеров» (элементы управления)
+        Label titleLabel = new Label("Панель инженера");
+        titleLabel.setStyle("-fx-font-weight: bold; -fx-font-size: 16px;");
+
+        Label fileLabel = new Label("Файл: Тестовая матрица");
+
+        Label correctionLabel = new Label("Поправка оси Z (м):");
+        TextField correctionInput = new TextField("0.40"); // Поле с дефолтным значением
+
+        Button uploadBtn = new Button("Обзор файла...");
+        uploadBtn.setPrefWidth(210);
+
+        Button processBtn = new Button("Визуализировать 3D");
+        processBtn.setPrefWidth(210);
+        processBtn.setStyle("-fx-background-color: #4CAF50; -fx-text-fill: white; -fx-font-weight: bold;");
+
+        // Складываем все элементы в левую панель
+        sidePanel.getChildren().addAll(titleLabel, fileLabel, uploadBtn, correctionLabel, correctionInput, processBtn);
+
+        // 2. Создаем контейнер для 3D-графики (Субсцена)
+        // Чтобы 3D-графика могла жить внутри плоской панели BorderPane, ее нужно упаковать в SubScene
+        SubScene subScene3D = new SubScene(root3D, 774, 768, true, SceneAntialiasing.BALANCED);
+        subScene3D.setCamera(camera);
+
+        // АВТОМАТИЧЕСКОЕ РАСТЯГИВАНИЕ 3D-ОКНА ПОД РАЗМЕР ЭКРАНА (Исправление бага обрезки)
+        // Привязываем ширину и высоту 3D-субсцены к размерам главного окна, за вычетом 250px левой панели
+        subScene3D.widthProperty().bind(mainLayout.widthProperty().subtract(250));
+        subScene3D.heightProperty().bind(mainLayout.heightProperty());
+
+        // 3. Распределяем элементы по сторонам BorderPane
+        mainLayout.setLeft(sidePanel);   // Кнопки и настройки уходят налево
+        mainLayout.setCenter(subScene3D); // Интерактивное 3D-окно встает по центру
+
+
+        // Было: Scene scene = new Scene(root3D, 1024, 768, true, SceneAntialiasing.BALANCED);
+        // Стало: Передаем mainLayout в качестве корня, а настройки сглаживания уходят в SubScene
+        Scene scene = new Scene(mainLayout, 1024, 768);
+        // Важно: обработчики мыши теперь вешаем не на сцену, а на subScene3D, чтобы клики на кнопках слева не крутили 3D-модель!
+
         scene.setFill(Color.LIGHTBLUE); // Цвет неба
 
         // --- НАСТРОЙКА ПРАВИЛЬНЫХ НЕЗАВИСИМЫХ ОСЕЙ ВРАЩЕНИЯ ---
@@ -182,12 +235,12 @@ public class Georadar3DViewer extends Application {
         modelGroup.getTransforms().add(rotateX);
 
         // --- УПРАВЛЕНИЕ МЫШЬЮ (ВРАЩЕНИЕ, СДВИГ, ЗУМ) ---
-        scene.setOnMousePressed(me -> {
+        subScene3D.setOnMousePressed(me -> {
             mousePosX = me.getSceneX();
             mousePosY = me.getSceneY();
         });
 
-        scene.setOnMouseDragged(me -> {
+        subScene3D.setOnMouseDragged(me -> {
             mouseOldX = mousePosX;
             mouseOldY = mousePosY;
             mousePosX = me.getSceneX();
@@ -207,14 +260,23 @@ public class Georadar3DViewer extends Application {
             }
         });
 
-        // КОЛЕСИКО МЫШИ — Приближение и удаление (Zoom) прямой регулировкой Z камеры
-        scene.setOnScroll(se -> {
+        // КОЛЕСИКО МЫШИ — Безопасное приближение и удаление (Zoom) с лимитерами
+        subScene3D.setOnScroll(se -> {
             double z = camera.getTranslateZ();
-            camera.setTranslateZ(z + se.getDeltaY() * 0.8);
+            double newZ = z + se.getDeltaY() * 0.8;
+
+            // Ограничиваем движение камеры от -600 (далеко) до -80 (близко)
+            if (newZ >= -600 && newZ <= -80) {
+                camera.setTranslateZ(newZ);
+            }
         });
+
 
         primaryStage.setTitle("3D Визуализация конструктивных слоев ж/д пути и просадок грунта");
         primaryStage.setScene(scene);
+
+        // Автоматически передаем фокус мыши в 3D пространство при старте программы
+        subScene3D.requestFocus();
         primaryStage.show();
     }
 }
