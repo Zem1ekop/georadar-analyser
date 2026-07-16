@@ -31,9 +31,9 @@ public class GeoradarImportService {
     }
 
     @Transactional
-    public TrackSection importExcelData(InputStream inputStream, String lineName, Integer trackNumber) throws Exception {
-        log.info("Запуск импорта реальных данных Geoscan32 для линии: {}", lineName);
 
+    public TrackSection importExcelData(InputStream inputStream, String lineName, Integer trackNumber, float axisCorrection) throws Exception {
+        log.info("Запуск импорта реальных данных Geoscan32 для линии: {}", lineName);
         TrackSection section = new TrackSection();
         section.setLineName(lineName);
         section.setTrackNumber(trackNumber);
@@ -86,7 +86,8 @@ public class GeoradarImportService {
 
                             // НАША ИДЕАЛЬНАЯ ФОРМУЛА:
                             // Физический уровень Z = Высота поверхности профиля - Глубина залегания слоя
-                            float correctedDepthZ = getSurfaceHeight(lateralOffsetY) - rawDepthZ;
+                            float correctedDepthZ = getSurfaceHeight(lateralOffsetY, axisCorrection) - rawDepthZ;
+
 
                             // Создаем и привязываем точку к профилю
                             LayerPoint point = new LayerPoint();
@@ -119,20 +120,24 @@ public class GeoradarImportService {
      * @param lateralOffset - смещение профиля в метрах
      * @return абсолютная высота поверхности относительно плеча (в метрах)
      */
-    private float getSurfaceHeight(float lateralOffset) {
-        // Если профиль идет по оси пути (условно Y = 1.5м или 5.5м),
-        // возвращаем нашу поправку axisCorrection (+0.40м)
+    /**
+     * МЕТОД ОПРЕДЕЛЕНИЯ ВЫСОТЫ ДНЕВНОЙ ПОВЕРХНОСТИ ПРОФИЛЯ (Динамический)
+     * @param lateralOffset - смещение профиля в метрах
+     * @param axisCorrection - поправка, прилетевшая из текстового поля GUI
+     * @return абсолютная высота поверхности относительно плеча (в метрах)
+     */
+    // Обновленный метод в самом низу класса:
+    private float getSurfaceHeight(float lateralOffset, float axisCorrection) {
         if (Math.abs(lateralOffset - 1.5f) < 0.1f || Math.abs(lateralOffset - 5.5f) < 0.1f) {
-            return axisCorrection;
+            return axisCorrection; // Используем поправку, прилетевшую с экрана!
         }
-
-        // Междупутье (условно Y = 3.5м) находится посередине между осью и плечом
         if (Math.abs(lateralOffset - 3.5f) < 0.1f) {
-            return axisCorrection / 2f; // Автоматически вернет +0.20м
+            return axisCorrection / 2f;
         }
-
-        return 0.0f; // Для обочины (плеч балластной призмы) высота принята за ноль
+        return 0.0f;
     }
+
+
 }
 
 
