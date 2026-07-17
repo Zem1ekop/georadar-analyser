@@ -78,14 +78,15 @@ public class GeoradarAnalyserApplication implements CommandLineRunner {
                     // точно так же, как это делает софт Geoscan32 в реальности!
                 }
             }
-            
+
             java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream();
             workbook.write(bos);
             byte[] excelBytes = bos.toByteArray();
             java.io.ByteArrayInputStream realExcelStream = new java.io.ByteArrayInputStream(excelBytes);
 
             System.out.println("=== Инициализация текстовых данных георадара ===");
-            var savedSection = importService.importExcelData(realExcelStream, "Тестовый перегон Geoscan32", 1, 0.40f);
+            var savedSection = importService.importExcelData(realExcelStream, "Тестовый перегон Geoscan32", 1, 0.40f, null);
+
 
 
             System.out.println("=== Запуск 3D Визуализатора JavaFX ===");

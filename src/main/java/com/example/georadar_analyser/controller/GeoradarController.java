@@ -40,7 +40,8 @@ public class GeoradarController {
 
         try {
             // Передаем поток данных загруженного файла прямо в наш сервис
-            TrackSection savedSection = importService.importExcelData(file.getInputStream(), lineName, trackNumber, 0.40f);
+            TrackSection savedSection = importService.importExcelData(file.getInputStream(), lineName, trackNumber, 0.40f, null);
+
 
             // Если всё прошло успешно, возвращаем статус 201 (Created) и ID новой записи в БД
             return ResponseEntity.status(HttpStatus.CREATED)

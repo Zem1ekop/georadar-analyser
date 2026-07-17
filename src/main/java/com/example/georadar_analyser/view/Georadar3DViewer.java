@@ -42,7 +42,7 @@ public class Georadar3DViewer extends Application {
     private static GeoradarImportService importService;
     private static Long targetSectionId;
 
-    private Group modelGroup;
+    private static Group modelGroup;
     private PerspectiveCamera camera; //
 
     private double mousePosX;
@@ -103,10 +103,11 @@ public class Georadar3DViewer extends Application {
 
         sidePanel.getChildren().addAll(titleLabel, uploadBtn, fileLabel, correctionLabel, correctionInput, processBtn);
 
-        // --- НАСТРОЙКА СВЕТА И КАМЕРЫ ---
+        // --- НАСТРОЙКА ОБЪЕМНОГО СВЕТА ДЛЯ МАСШТАБА 1:1 ---
         PointLight pointLight = new PointLight(Color.WHITE);
-        pointLight.setTranslateY(-100);
-        pointLight.setTranslateZ(-200);
+        pointLight.setTranslateX(10);  // Светит в центр начального участка пути
+        pointLight.setTranslateY(-20); // Подвешиваем «лампочку» на 20 метров над рельсами
+        pointLight.setTranslateZ(-30); // Сдвигаем свет чуть ближе к наблюдателю
         root3D.getChildren().add(pointLight);
 
         AmbientLight ambientLight = new AmbientLight(Color.rgb(80, 80, 80));
@@ -114,8 +115,13 @@ public class Georadar3DViewer extends Application {
 
         camera = new PerspectiveCamera(true);
         camera.setNearClip(0.1);
-        camera.setFarClip(1000.0);
-        camera.setTranslateZ(-400);
+        camera.setFarClip(5000.0);
+
+        // Позиционируем камеру для панорамного обзора
+        camera.setTranslateX(400);   // Камера смотрит вглубь перегона
+        camera.setTranslateY(-100);  // Приподнята вверх
+        camera.setTranslateZ(-600);  // Комфортное панорамное расстояние
+
 
         Group cameraXform = new Group();
         cameraXform.getChildren().add(camera);
@@ -174,20 +180,17 @@ public class Georadar3DViewer extends Application {
 
                 System.out.println("=== Запуск пакетного импорта профилей ===");
 
-                // Перебираем все выбранные инженером файлы Excel в цикле!
                 for (File file : this.selectedFiles) {
                     try (FileInputStream fis = new FileInputStream(file)) {
 
-                        // Если это первый файл — создаем новый участок ж/д пути.
-                        // Если последующие — передаем тот же самый ID, чтобы привязать профили к одной сцене!
-                        // Для этого мы на Шаге 3 слегка обновим аргументы GeoradarImportService.
+                        // Передаем freshSectionId аргументом. На первом шаге он null (создастся новый участок),
+                        // на последующих шагах новые профили будут вливаться в этот же ID!
                         TrackSection freshSection = Georadar3DViewer.importService.importExcelData(
-                                fis, "Участок Geoscan32", 1, userAxisCorrection
+                                fis, "Участок Geoscan32", 1, userAxisCorrection, freshSectionId
                         );
 
-                        if (isFirstFile) {
+                        if (freshSectionId == null) {
                             freshSectionId = freshSection.getId();
-                            isFirstFile = false;
                         }
                     }
                 }
@@ -260,55 +263,48 @@ public class Georadar3DViewer extends Application {
     }
 
     /**
-     * МЕТОД ДИНАМИЧЕСКОЙ СБОРКИ И ПЕРЕРИСОВКИ 3D МОДЕЛИ
-     */
-    /**
-     * МЕТОД АДАПТИВНОЙ ТРИАНГУЛЯЦИИ СЛОЕВ (С учетом выклинивания на осях)
+     * ПРОМЫШЛЕННЫЙ CAD-МЕТОД ТРИАНГУЛЯЦИИ ПО РЕГУЛЯРНОЙ СЕТКЕ ИНТЕРПОЛЯЦИИ
      */
     private void rebuild3DModel(Long sectionId) {
-        modelGroup.getChildren().clear(); // Стираем старую графику
+        Georadar3DViewer.modelGroup.getChildren().clear();
 
         Optional<TrackSection> sectionOpt = Georadar3DViewer.sectionRepository.findByIdWithWithAllData(sectionId);
         if (sectionOpt.isEmpty()) return;
         TrackSection section = sectionOpt.get();
 
         Map<String, Color> layerColors = Map.of(
-                "балласт", Color.GRAY,
-                "песок", Color.GOLD,
-                "земляное полотно", Color.SADDLEBROWN
+                "слой 1", Color.GRAY,
+                "слой 2", Color.GOLD,
+                "слой 3", Color.SADDLEBROWN
         );
 
-        // Собираем все уникальные имена слоев, которые есть хоть где-то на участке
         Set<String> layerNames = new HashSet<>();
         for (RadarProfile p : section.getProfiles()) {
             for (LayerPoint pt : p.getPoints()) {
                 layerNames.add(pt.getLayerName().toLowerCase().trim());
             }
         }
+        System.out.println("=== СИСТЕМА ДИНАМИЧЕСКИХ СЛОЕВ ОБНАРУЖИЛА: " + layerNames + " ===");
 
-        // Строим каждый слой независимо и адаптивно!
+        // Шаг координатной сетки вдоль пути — каждые 5 метров (идеально для 3D)
+        float gridStepX = 5.0f;
+        float maxLimitX = 400.0f; // Ограничим первыми 400 метрами участка для панорамы
+
         for (String layer : layerNames) {
-
-            // Фильтруем ТОЛЬКО те профили, на которых этот слой РЕАЛЬНО существует
             List<RadarProfile> profilesWithThisLayer = new ArrayList<>();
             for (RadarProfile p : section.getProfiles()) {
                 boolean hasLayer = p.getPoints().stream()
                         .anyMatch(pt -> pt.getLayerName().toLowerCase().trim().equals(layer));
-                if (hasLayer) {
-                    profilesWithThisLayer.add(p);
-                }
+                if (hasLayer) profilesWithThisLayer.add(p);
             }
-
-            // Сортируем профили слева направо по оси Y (0м -> 1.5м -> 3.5м -> ...)
             profilesWithThisLayer.sort(Comparator.comparing(RadarProfile::getLateralOffset));
-
-            // Если слой есть меньше чем на 2 профилях — натянуть поверхность невозможно
             if (profilesWithThisLayer.size() < 2) continue;
 
             TriangleMesh mesh = new TriangleMesh();
             List<Float> pointsList = new ArrayList<>();
-            int pointsPerProfile = 0;
-            boolean firstProfileCounted = false;
+
+            // Считаем, сколько узлов сетки поместится в длину
+            int gridNodesCountX = (int) (maxLimitX / gridStepX) + 1;
 
             for (RadarProfile profile : profilesWithThisLayer) {
                 float y = profile.getLateralOffset();
@@ -319,41 +315,34 @@ public class Georadar3DViewer extends Application {
                         layerPoints.add(pt);
                     }
                 }
-                // Сортируем точки по метражу вдоль пути (X)
-                layerPoints.sort((p1, p2) -> Float.compare(p1.getDistanceX(), p2.getDistanceX()));
+                layerPoints.sort(Comparator.comparing(LayerPoint::getDistanceX));
 
-                if (!firstProfileCounted) {
-                    pointsPerProfile = layerPoints.size();
-                    firstProfileCounted = true;
-                }
+                // Математическая интерполяция: находим точный Z для каждого ровного шага X
+                for (int i = 0; i < gridNodesCountX; i++) {
+                    float targetX = i * gridStepX;
+                    float interpolatedZ = getInterpolatedZ(layerPoints, targetX);
 
-                // Добавляем координаты в 3D сетку
-                for (LayerPoint pt : layerPoints) {
-                    pointsList.add(pt.getDistanceX() * 40f);
-                    pointsList.add(y * 40f);
-                    pointsList.add(-pt.getDepthZ() * 80f);
+                    // Переводим в 3D координаты
+                    pointsList.add(targetX * 0.8f);       // Сжатие длины X
+                    pointsList.add(y * 40f);             // Масштаб ширины Y
+                    pointsList.add(-interpolatedZ * 120f); // Масштаб глубины Z
                 }
             }
 
-            if (pointsPerProfile < 2) continue;
-
-            // Загружаем точки в mesh
             float[] pointsArray = new float[pointsList.size()];
             for (int i = 0; i < pointsList.size(); i++) pointsArray[i] = pointsList.get(i);
             mesh.getPoints().setAll(pointsArray);
             mesh.getTexCoords().addAll(0, 0);
 
-            // СВЯЗЫВАЕМ ТРЕУГОЛЬНИКИ АДАПТИВНО:
-            //numProfiles теперь динамический — равен числу профилей, где этот слой РЕАЛЬНО есть!
+            // Связываем треугольники по идеальной регулярной сетке узлов
             int numProfiles = profilesWithThisLayer.size();
             for (int p = 0; p < numProfiles - 1; p++) {
-                for (int t = 0; t < pointsPerProfile - 1; t++) {
-                    int p0 = p * pointsPerProfile + t;
+                for (int t = 0; t < gridNodesCountX - 1; t++) {
+                    int p0 = p * gridNodesCountX + t;
                     int p1 = p0 + 1;
-                    int p2 = (p + 1) * pointsPerProfile + t;
+                    int p2 = (p + 1) * gridNodesCountX + t;
                     int p3 = p2 + 1;
 
-                    // Натягиваем сетку полигонов между соседними доступными профилями
                     mesh.getFaces().addAll(p0, 0, p2, 0, p1, 0);
                     mesh.getFaces().addAll(p1, 0, p2, 0, p3, 0);
                 }
@@ -361,14 +350,30 @@ public class Georadar3DViewer extends Application {
 
             MeshView meshView = new MeshView(mesh);
             meshView.setCullFace(javafx.scene.shape.CullFace.NONE);
-
             PhongMaterial material = new PhongMaterial();
-            material.setDiffuseColor(layerColors.getOrDefault(layer, Color.CYAN).deriveColor(0, 1, 1, 0.75));
+            material.setDiffuseColor(layerColors.getOrDefault(layer, Color.CYAN));
             meshView.setMaterial(material);
-
-            modelGroup.getChildren().add(meshView);
+            Georadar3DViewer.modelGroup.getChildren().add(meshView);
         }
     }
 
+    /**
+     * ВСПОМОГАТЕЛЬНЫЙ МЕТОД ЛИНЕЙНОЙ ИНТЕРПОЛЯЦИИ ГЕОФИЗИЧЕСКИХ ОТМЕТОК
+     */
+    private float getInterpolatedZ(List<LayerPoint> points, float targetX) {
+        if (points.isEmpty()) return 0.0f;
+        if (targetX <= points.get(0).getDistanceX()) return points.get(0).getDepthZ();
+        if (targetX >= points.get(points.size() - 1).getDistanceX()) return points.get(points.size() - 1).getDepthZ();
 
+        // Ищем два ближайших соседа слева и справа от targetX
+        for (int i = 0; i < points.size() - 1; i++) {
+            LayerPoint p1 = points.get(i);
+            LayerPoint p2 = points.get(i + 1);
+            if (targetX >= p1.getDistanceX() && targetX <= p2.getDistanceX()) {
+                float ratio = (targetX - p1.getDistanceX()) / (p2.getDistanceX() - p1.getDistanceX());
+                return p1.getDepthZ() + ratio * (p2.getDepthZ() - p1.getDepthZ());
+            }
+        }
+        return points.get(0).getDepthZ();
+    }
 }

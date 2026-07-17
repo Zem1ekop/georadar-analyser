@@ -16,11 +16,16 @@ import java.io.InputStream;
 import java.util.HashMap;
 import java.util.Map;
 
+import org.apache.poi.ss.usermodel.WorkbookFactory;
+
+
 @Service
 public class GeoradarImportService {
 
     private static final Logger log = LoggerFactory.getLogger(GeoradarImportService.class);
     private final TrackSectionRepository sectionRepository;
+    @jakarta.persistence.PersistenceContext
+    private jakarta.persistence.EntityManager entityManager;
 
     // Автоматически внедряем поправку +0.40м из файла application.properties
     @Value("${georadar.geometry.axis-to-shoulder-correction:0.0}")
@@ -31,18 +36,26 @@ public class GeoradarImportService {
     }
 
     @Transactional
+    // Добавляем параметр Long existingSectionId в сигнатуру метода
+    public TrackSection importExcelData(InputStream inputStream, String lineName, Integer trackNumber, float axisCorrection, Long existingSectionId) throws Exception {
+        log.info("Запуск импорта данных Geoscan32 для линии: {}", lineName);
 
-    public TrackSection importExcelData(InputStream inputStream, String lineName, Integer trackNumber, float axisCorrection) throws Exception {
-        log.info("Запуск импорта реальных данных Geoscan32 для линии: {}", lineName);
-        TrackSection section = new TrackSection();
-        section.setLineName(lineName);
-        section.setTrackNumber(trackNumber);
-        section.setSurveyDate(java.time.LocalDate.now());
+        TrackSection section;
+        // Если ID передан — достаем существующий участок из базы, если null — создаем новый!
+        if (existingSectionId != null) {
+            section = sectionRepository.findById(existingSectionId).orElse(new TrackSection());
+        } else {
+            section = new TrackSection();
+            section.setLineName(lineName);
+            section.setTrackNumber(trackNumber);
+            section.setSurveyDate(java.time.LocalDate.now());
+        }
 
         // Кэш профилей. Ключом теперь является само физическое смещение Y из колонки B
         Map<Float, RadarProfile> profileCache = new HashMap<>();
 
-        try (Workbook workbook = new XSSFWorkbook(inputStream)) {
+        // Парсер сам поймет формат файла (.xls или .xlsx)
+        try (Workbook workbook = WorkbookFactory.create(inputStream)) {
             Sheet sheet = workbook.getSheetAt(0);
 
             for (Row row : sheet) {
@@ -66,33 +79,25 @@ public class GeoradarImportService {
                         return newProfile;
                     });
 
-                    // 3. Карта слоев: Ключ — индекс колонки в Excel, Значение — имя слоя в системе
-                    Map<Integer, String> columnLayers = Map.of(
-                            2, "балласт",           // Колонка C
-                            3, "песок",             // Колонка D
-                            4, "земляное полотно"   // Колонка E
-                    );
-
-                    // Разбираем строку «матрицы» на отдельные точки слоев по столбцам
-                    for (Map.Entry<Integer, String> entry : columnLayers.entrySet()) {
-                        int columnIndex = entry.getKey();
-                        String layerName = entry.getValue();
+                    // Читаем все доступные колонки со слоями, начиная с колонки C (индекс 2)
+                    int lastColumnIndex = row.getLastCellNum();
+                    for (int columnIndex = 2; columnIndex < lastColumnIndex; columnIndex++) {
 
                         Cell cell = row.getCell(columnIndex);
                         if (cell != null && cell.getCellType() == CellType.NUMERIC) {
 
-                            // Читаем абсолютную глубину из Geoscan32 (в см -> переводим в МЕТРЫ)
+                            // Автоматически даем имя по номеру границы ("Слой 1", "Слой 2"...)
+                            String layerName = "Слой " + (columnIndex - 1);
+
+                            // Читаем абсолютную глубину (в см -> переводим в МЕТРЫ)
                             float rawDepthZ = (float) cell.getNumericCellValue() / 100.0f;
 
-                            // НАША ИДЕАЛЬНАЯ ФОРМУЛА:
-                            // Физический уровень Z = Высота поверхности профиля - Глубина залегания слоя
+                            // Физический уровень Z = Высота поверхности - Глубина
                             float correctedDepthZ = getSurfaceHeight(lateralOffsetY, axisCorrection) - rawDepthZ;
 
-
-                            // Создаем и привязываем точку к профилю
                             LayerPoint point = new LayerPoint();
                             point.setDistanceX(distanceX);
-                            point.setDepthZ(correctedDepthZ); // Сюда уйдет точное пространственное значение
+                            point.setDepthZ(correctedDepthZ);
                             point.setLayerName(layerName);
                             point.setRadarProfile(profile);
 
@@ -107,7 +112,12 @@ public class GeoradarImportService {
         }
 
         TrackSection savedSection = sectionRepository.save(section);
+
+        // ХАК ДЛЯ JAVAFX: Принудительно выталкиваем данные из кэша Hibernate прямо в таблицы H2!
+        entityManager.flush();
+
         log.info("Импорт Geoscan32 успешно завершен. Создано профилей: {}", savedSection.getProfiles().size());
+
         return savedSection;
     }
 
