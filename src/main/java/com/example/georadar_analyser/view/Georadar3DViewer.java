@@ -117,10 +117,10 @@ public class Georadar3DViewer extends Application {
         camera.setNearClip(0.1);
         camera.setFarClip(5000.0);
 
-        // Позиционируем камеру для панорамного обзора
-        camera.setTranslateX(400);   // Камера смотрит вглубь перегона
-        camera.setTranslateY(-100);  // Приподнята вверх
-        camera.setTranslateZ(-600);  // Комфортное панорамное расстояние
+        // Позиционируем камеру для красивого панорамного ракурса
+        camera.setTranslateX(300);   // Смотрим в центр модели
+        camera.setTranslateY(-80);  // Поднимаем камеру чуть выше над рельсами
+        camera.setTranslateZ(-800);  // Отодвигаем на комфортное расстояние
 
 
         Group cameraXform = new Group();
@@ -175,10 +175,15 @@ public class Georadar3DViewer extends Application {
                 String inputTxt = correctionInput.getText().trim().replace(",", ".");
                 float userAxisCorrection = Float.parseFloat(inputTxt);
 
-                Long freshSectionId = null;
-                boolean isFirstFile = true;
 
                 System.out.println("=== Запуск пакетного импорта профилей ===");
+                System.out.println("=== Очистка базы данных от старой синтетики ===");
+                // Стираем старый дефолтный участок, чтобы он не подмешивал свои точки к реальному файлу!
+                if (Georadar3DViewer.targetSectionId != null) {
+                    Georadar3DViewer.sectionRepository.deleteById(Georadar3DViewer.targetSectionId);
+                }
+
+                Long freshSectionId = null;
 
                 for (File file : this.selectedFiles) {
                     try (FileInputStream fis = new FileInputStream(file)) {
@@ -248,11 +253,14 @@ public class Georadar3DViewer extends Application {
 
         subScene3D.setOnScroll(se -> {
             double z = camera.getTranslateZ();
-            double newZ = z + se.getDeltaY() * 0.8;
-            if (newZ >= -600 && newZ <= -80) {
+            double newZ = z + se.getDeltaY() * 1.5; // Сделали зум еще чуть более отзывчивым
+
+            // СТАЛО: разрешаем камере отлетать до -2500 пикселей в космос!
+            if (newZ >= -2500 && newZ <= -50) {
                 camera.setTranslateZ(newZ);
             }
         });
+
 
         rebuild3DModel(targetSectionId);
 
@@ -286,9 +294,27 @@ public class Georadar3DViewer extends Application {
         }
         System.out.println("=== СИСТЕМА ДИНАМИЧЕСКИХ СЛОЕВ ОБНАРУЖИЛА: " + layerNames + " ===");
 
-        // Шаг координатной сетки вдоль пути — каждые 5 метров (идеально для 3D)
-        float gridStepX = 5.0f;
-        float maxLimitX = 400.0f; // Ограничим первыми 400 метрами участка для панорамы
+        // Шаг координатной сетки вдоль пути — каждые 4 метра для высокой точности
+        float gridStepX = 4.0f;
+
+        // АВТОМАТИЧЕСКИ НАХОДИМ МИНИМАЛЬНУЮ ОБЩУЮ ДЛИНУ УЧАСТКА ПО ВСЕМ ПРОФИЛЯМ
+        float minMaxX = Float.MAX_VALUE;
+        for (RadarProfile p : section.getProfiles()) {
+            if (p.getPoints() != null && !p.getPoints().isEmpty()) {
+                // Создаем чистый, изменяемый список-копию, чтобы обойти ограничения базы данных
+                List<LayerPoint> sortedPts = new ArrayList<>(p.getPoints());
+                sortedPts.sort(Comparator.comparing(LayerPoint::getDistanceX));
+
+                // Теперь метод get() сработает идеально и без подчеркиваний!
+                float profileLastX = sortedPts.get(sortedPts.size() - 1).getDistanceX();
+                if (profileLastX < minMaxX) {
+                    minMaxX = profileLastX;
+                }
+            }
+        }
+        // Задаем безопасный предел интерполяции (минус 5 метров на крайние погрешности файла)
+        float maxLimitX = minMaxX - 5.0f;
+        System.out.println("--- ГАРАНТИРОВАННАЯ ДЛИНА ИНТЕРПОЛЯЦИИ УЧАСТКА: " + maxLimitX + " метров ---");
 
         for (String layer : layerNames) {
             List<RadarProfile> profilesWithThisLayer = new ArrayList<>();
@@ -310,22 +336,27 @@ public class Georadar3DViewer extends Application {
                 float y = profile.getLateralOffset();
 
                 List<LayerPoint> layerPoints = new ArrayList<>();
+
+                // СТАЛО: Берем точки СТРОГО из текущего профиля,
+                // полностью исключая перекрестное подмешивание из других файлов пакета!
                 for (LayerPoint pt : profile.getPoints()) {
-                    if (pt.getLayerName().toLowerCase().trim().equals(layer)) {
+                    if (pt.getLayerName().equalsIgnoreCase(layer)) {
                         layerPoints.add(pt);
                     }
                 }
+
+                // Сортируем строго изолированные точки одного прохода
                 layerPoints.sort(Comparator.comparing(LayerPoint::getDistanceX));
 
-                // Математическая интерполяция: находим точный Z для каждого ровного шага X
+                // Математическая интерполяция по ровной сетке X
                 for (int i = 0; i < gridNodesCountX; i++) {
                     float targetX = i * gridStepX;
                     float interpolatedZ = getInterpolatedZ(layerPoints, targetX);
 
-                    // Переводим в 3D координаты
-                    pointsList.add(targetX * 0.8f);       // Сжатие длины X
-                    pointsList.add(y * 40f);             // Масштаб ширины Y
-                    pointsList.add(-interpolatedZ * 120f); // Масштаб глубины Z
+                    // Переводим в 3D координаты (масштабы оставляем как есть)
+                    pointsList.add(targetX * 1.5f);
+                    pointsList.add(y * 40f);
+                    pointsList.add(-interpolatedZ * 200f);
                 }
             }
 
@@ -370,6 +401,12 @@ public class Georadar3DViewer extends Application {
             LayerPoint p1 = points.get(i);
             LayerPoint p2 = points.get(i + 1);
             if (targetX >= p1.getDistanceX() && targetX <= p2.getDistanceX()) {
+
+                // ЗАЩИТА ОТ ДЕЛЕНИЯ НА НОЛЬ ( Field Дубляж точек в БД )
+                if (Math.abs(p2.getDistanceX() - p1.getDistanceX()) < 0.001f) {
+                    return p1.getDepthZ(); // Если точки в одной координате, просто отдаем Z без деления!
+                }
+
                 float ratio = (targetX - p1.getDistanceX()) / (p2.getDistanceX() - p1.getDistanceX());
                 return p1.getDepthZ() + ratio * (p2.getDepthZ() - p1.getDepthZ());
             }
