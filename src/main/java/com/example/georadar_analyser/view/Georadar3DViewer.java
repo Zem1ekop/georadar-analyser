@@ -26,14 +26,9 @@ import javafx.scene.control.Label;
 import javafx.scene.control.TextField;
 import javafx.geometry.Insets;
 import javafx.scene.SubScene;
-
 import javafx.stage.FileChooser;
 import java.io.File;
 import java.io.FileInputStream;
-
-
-
-
 
 @Component
 public class Georadar3DViewer extends Application {
@@ -43,29 +38,24 @@ public class Georadar3DViewer extends Application {
     private static Long targetSectionId;
 
     private static Group modelGroup;
-    private PerspectiveCamera camera; //
+    private PerspectiveCamera camera;
 
     private double mousePosX;
     private double mousePosY;
     private double mouseOldX;
     private double mouseOldY;
 
-    private List<File> selectedFiles = new ArrayList<>(); // <-- СТАЛО: список для пакетной загрузки
+    private List<File> selectedFiles = new ArrayList<>();
 
-
-    // Конструктор по умолчанию необходим для JavaFX движка
     public Georadar3DViewer() {}
 
     /**
      * ГЛАВНАЯ ТОЧКА СВЯЗИ SPRING И JAVAFX
-     * Принимает зависимости напрямую из контекста Spring Boot перед запуском окна
      */
     public void viewSection(Long sectionId, TrackSectionRepository repository, GeoradarImportService service) {
         Georadar3DViewer.sectionRepository = repository;
         Georadar3DViewer.importService = service;
         Georadar3DViewer.targetSectionId = sectionId;
-
-        // Запускаем графическое окно JavaFX
         Application.launch(Georadar3DViewer.class);
     }
 
@@ -105,9 +95,9 @@ public class Georadar3DViewer extends Application {
 
         // --- НАСТРОЙКА ОБЪЕМНОГО СВЕТА ДЛЯ МАСШТАБА 1:1 ---
         PointLight pointLight = new PointLight(Color.WHITE);
-        pointLight.setTranslateX(10);  // Светит в центр начального участка пути
-        pointLight.setTranslateY(-20); // Подвешиваем «лампочку» на 20 метров над рельсами
-        pointLight.setTranslateZ(-30); // Сдвигаем свет чуть ближе к наблюдателю
+        pointLight.setTranslateX(10);
+        pointLight.setTranslateY(-20);
+        pointLight.setTranslateZ(-30);
         root3D.getChildren().add(pointLight);
 
         AmbientLight ambientLight = new AmbientLight(Color.rgb(80, 80, 80));
@@ -117,11 +107,9 @@ public class Georadar3DViewer extends Application {
         camera.setNearClip(0.1);
         camera.setFarClip(5000.0);
 
-        // Позиционируем камеру для красивого панорамного ракурса
-        camera.setTranslateX(300);   // Смотрим в центр модели
-        camera.setTranslateY(-80);  // Поднимаем камеру чуть выше над рельсами
-        camera.setTranslateZ(-800);  // Отодвигаем на комфортное расстояние
-
+        camera.setTranslateX(300);
+        camera.setTranslateY(-80);
+        camera.setTranslateZ(-800);
 
         Group cameraXform = new Group();
         cameraXform.getChildren().add(camera);
@@ -129,7 +117,6 @@ public class Georadar3DViewer extends Application {
         cameraXform.setTranslateY(-10);
         root3D.getChildren().add(cameraXform);
 
-        // --- КОНТЕЙНЕР ДЛЯ 3D ГРАФИКИ (АДАПТИВНАЯ СУБСЦЕНА) ---
         SubScene subScene3D = new SubScene(root3D, 774, 768, true, SceneAntialiasing.BALANCED);
         subScene3D.setCamera(camera);
         subScene3D.widthProperty().bind(mainLayout.widthProperty().subtract(250));
@@ -140,7 +127,6 @@ public class Georadar3DViewer extends Application {
 
         Scene scene = new Scene(mainLayout, 1024, 768);
 
-        // --- ЛОГИКА КНОПКИ ОБЗОР ФАЙЛА ---
         // --- ЛОГИКА КНОПКИ ОБЗОР ФАЙЛОВ (ПАКЕТНЫЙ ВЫБОР) ---
         uploadBtn.setOnAction(event -> {
             FileChooser fileChooser = new FileChooser();
@@ -149,20 +135,14 @@ public class Georadar3DViewer extends Application {
                     new FileChooser.ExtensionFilter("Таблицы Excel (*.xlsx, *.xls)", "*.xlsx", "*.xls"),
                     new FileChooser.ExtensionFilter("Все файлы (*.*)", "*.*")
             );
-
-            // СТАЛО: Открываем проводник в режиме множественного выбора файлов!
             List<File> files = fileChooser.showOpenMultipleDialog(primaryStage);
-
             if (files != null && !files.isEmpty()) {
-                this.selectedFiles = files; // Сохраняем всю пачку файлов
+                this.selectedFiles = files;
                 fileLabel.setText("Выбрано профилей: " + files.size());
                 fileLabel.setStyle("-fx-text-fill: #0066CC; -fx-font-weight: bold;");
-                System.out.println("Инженер выбрал пакет из " + files.size() + " файлов.");
             }
         });
 
-
-        // --- ЛОГИКА КНОПКИ ВИЗУАЛИЗАЦИЯ 3D ---
         // --- ЛОГИКА КНОПКИ ВИЗУАЛИЗАЦИЯ (ПАКЕТНАЯ ОБРАБОТКА) ---
         processBtn.setOnAction(event -> {
             if (this.selectedFiles == null || this.selectedFiles.isEmpty()) {
@@ -170,30 +150,20 @@ public class Georadar3DViewer extends Application {
                 fileLabel.setStyle("-fx-text-fill: #FF0000; -fx-font-weight: bold;");
                 return;
             }
-
             try {
                 String inputTxt = correctionInput.getText().trim().replace(",", ".");
                 float userAxisCorrection = Float.parseFloat(inputTxt);
 
-
-                System.out.println("=== Запуск пакетного импорта профилей ===");
-                System.out.println("=== Очистка базы данных от старой синтетики ===");
-                // Стираем старый дефолтный участок, чтобы он не подмешивал свои точки к реальному файлу!
                 if (Georadar3DViewer.targetSectionId != null) {
                     Georadar3DViewer.sectionRepository.deleteById(Georadar3DViewer.targetSectionId);
                 }
 
                 Long freshSectionId = null;
-
                 for (File file : this.selectedFiles) {
                     try (FileInputStream fis = new FileInputStream(file)) {
-
-                        // Передаем freshSectionId аргументом. На первом шаге он null (создастся новый участок),
-                        // на последующих шагах новые профили будут вливаться в этот же ID!
                         TrackSection freshSection = Georadar3DViewer.importService.importExcelData(
                                 fis, "Участок Geoscan32", 1, userAxisCorrection, freshSectionId
                         );
-
                         if (freshSectionId == null) {
                             freshSectionId = freshSection.getId();
                         }
@@ -202,14 +172,11 @@ public class Georadar3DViewer extends Application {
 
                 if (freshSectionId != null) {
                     Georadar3DViewer.targetSectionId = freshSectionId;
-                    // Перестраиваем адаптивную 3D сетку на экране
                     rebuild3DModel(Georadar3DViewer.targetSectionId);
-
                     fileLabel.setText("Загружено профилей: " + this.selectedFiles.size());
                     fileLabel.setStyle("-fx-text-fill: #4CAF50; -fx-font-weight: bold;");
                 }
-
-                subScene3D.requestFocus(); // Возвращаем фокус мыши в 3D
+                subScene3D.requestFocus();
 
             } catch (NumberFormatException nfe) {
                 correctionLabel.setText("Ошибка: введите число (например 0.40)!");
@@ -220,7 +187,6 @@ public class Georadar3DViewer extends Application {
                 fileLabel.setStyle("-fx-text-fill: #FF0000;");
             }
         });
-
 
         // --- НАВИГАЦИЯ И ВРАЩЕНИЕ МЫШИ ---
         javafx.scene.transform.Rotate rotateY = new javafx.scene.transform.Rotate(-30, javafx.geometry.Point3D.ZERO.add(0, 1, 0));
@@ -253,14 +219,11 @@ public class Georadar3DViewer extends Application {
 
         subScene3D.setOnScroll(se -> {
             double z = camera.getTranslateZ();
-            double newZ = z + se.getDeltaY() * 1.5; // Сделали зум еще чуть более отзывчивым
-
-            // СТАЛО: разрешаем камере отлетать до -2500 пикселей в космос!
+            double newZ = z + se.getDeltaY() * 1.5;
             if (newZ >= -2500 && newZ <= -50) {
                 camera.setTranslateZ(newZ);
             }
         });
-
 
         rebuild3DModel(targetSectionId);
 
@@ -292,29 +255,22 @@ public class Georadar3DViewer extends Application {
                 layerNames.add(pt.getLayerName().toLowerCase().trim());
             }
         }
-        System.out.println("=== СИСТЕМА ДИНАМИЧЕСКИХ СЛОЕВ ОБНАРУЖИЛА: " + layerNames + " ===");
 
-        // Шаг координатной сетки вдоль пути — каждые 4 метра для высокой точности
-        float gridStepX = 4.0f;
-
-        // АВТОМАТИЧЕСКИ НАХОДИМ МИНИМАЛЬНУЮ ОБЩУЮ ДЛИНУ УЧАСТКА ПО ВСЕМ ПРОФИЛЯМ
         float minMaxX = Float.MAX_VALUE;
         for (RadarProfile p : section.getProfiles()) {
             if (p.getPoints() != null && !p.getPoints().isEmpty()) {
-                // Создаем чистый, изменяемый список-копию, чтобы обойти ограничения базы данных
                 List<LayerPoint> sortedPts = new ArrayList<>(p.getPoints());
                 sortedPts.sort(Comparator.comparing(LayerPoint::getDistanceX));
-
-                // Теперь метод get() сработает идеально и без подчеркиваний!
                 float profileLastX = sortedPts.get(sortedPts.size() - 1).getDistanceX();
                 if (profileLastX < minMaxX) {
                     minMaxX = profileLastX;
                 }
             }
         }
-        // Задаем безопасный предел интерполяции (минус 5 метров на крайние погрешности файла)
+
+        float gridStepX = 4.0f;
         float maxLimitX = minMaxX - 5.0f;
-        System.out.println("--- ГАРАНТИРОВАННАЯ ДЛИНА ИНТЕРПОЛЯЦИИ УЧАСТКА: " + maxLimitX + " метров ---");
+        int gridNodesCountX = (int) (maxLimitX / gridStepX) + 1;
 
         for (String layer : layerNames) {
             List<RadarProfile> profilesWithThisLayer = new ArrayList<>();
@@ -329,31 +285,21 @@ public class Georadar3DViewer extends Application {
             TriangleMesh mesh = new TriangleMesh();
             List<Float> pointsList = new ArrayList<>();
 
-            // Считаем, сколько узлов сетки поместится в длину
-            int gridNodesCountX = (int) (maxLimitX / gridStepX) + 1;
-
             for (RadarProfile profile : profilesWithThisLayer) {
                 float y = profile.getLateralOffset();
-
                 List<LayerPoint> layerPoints = new ArrayList<>();
 
-                // СТАЛО: Берем точки СТРОГО из текущего профиля,
-                // полностью исключая перекрестное подмешивание из других файлов пакета!
                 for (LayerPoint pt : profile.getPoints()) {
                     if (pt.getLayerName().equalsIgnoreCase(layer)) {
                         layerPoints.add(pt);
                     }
                 }
-
-                // Сортируем строго изолированные точки одного прохода
                 layerPoints.sort(Comparator.comparing(LayerPoint::getDistanceX));
 
-                // Математическая интерполяция по ровной сетке X
                 for (int i = 0; i < gridNodesCountX; i++) {
                     float targetX = i * gridStepX;
                     float interpolatedZ = getInterpolatedZ(layerPoints, targetX);
 
-                    // Переводим в 3D координаты (масштабы оставляем как есть)
                     pointsList.add(targetX * 1.5f);
                     pointsList.add(y * 40f);
                     pointsList.add(-interpolatedZ * 200f);
@@ -365,7 +311,6 @@ public class Georadar3DViewer extends Application {
             mesh.getPoints().setAll(pointsArray);
             mesh.getTexCoords().addAll(0, 0);
 
-            // Связываем треугольники по идеальной регулярной сетке узлов
             int numProfiles = profilesWithThisLayer.size();
             for (int p = 0; p < numProfiles - 1; p++) {
                 for (int t = 0; t < gridNodesCountX - 1; t++) {
@@ -381,9 +326,13 @@ public class Georadar3DViewer extends Application {
 
             MeshView meshView = new MeshView(mesh);
             meshView.setCullFace(javafx.scene.shape.CullFace.NONE);
+            meshView.setDrawMode(javafx.scene.shape.DrawMode.FILL);
+
             PhongMaterial material = new PhongMaterial();
             material.setDiffuseColor(layerColors.getOrDefault(layer, Color.CYAN));
+            material.setSpecularColor(Color.WHITE);
             meshView.setMaterial(material);
+
             Georadar3DViewer.modelGroup.getChildren().add(meshView);
         }
     }
@@ -396,17 +345,13 @@ public class Georadar3DViewer extends Application {
         if (targetX <= points.get(0).getDistanceX()) return points.get(0).getDepthZ();
         if (targetX >= points.get(points.size() - 1).getDistanceX()) return points.get(points.size() - 1).getDepthZ();
 
-        // Ищем два ближайших соседа слева и справа от targetX
         for (int i = 0; i < points.size() - 1; i++) {
             LayerPoint p1 = points.get(i);
             LayerPoint p2 = points.get(i + 1);
             if (targetX >= p1.getDistanceX() && targetX <= p2.getDistanceX()) {
-
-                // ЗАЩИТА ОТ ДЕЛЕНИЯ НА НОЛЬ ( Field Дубляж точек в БД )
                 if (Math.abs(p2.getDistanceX() - p1.getDistanceX()) < 0.001f) {
-                    return p1.getDepthZ(); // Если точки в одной координате, просто отдаем Z без деления!
+                    return p1.getDepthZ();
                 }
-
                 float ratio = (targetX - p1.getDistanceX()) / (p2.getDistanceX() - p1.getDistanceX());
                 return p1.getDepthZ() + ratio * (p2.getDepthZ() - p1.getDepthZ());
             }
