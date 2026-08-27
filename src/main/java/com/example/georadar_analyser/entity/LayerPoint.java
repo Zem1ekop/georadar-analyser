@@ -7,7 +7,7 @@ import lombok.Setter;
 @Entity
 @Table(name = "layer_points", indexes = {
         // Индекс в БД для быстрого поиска конкретного слоя (например, "Балласт"),
-        // когда точек станет очень много. Это сильный плюс для резюме.
+        // когда точек станет очень много.
         @Index(name = "idx_layer_name", columnList = "layer_name")
 })
 @Getter
@@ -19,10 +19,10 @@ public class LayerPoint {
     private Long id;
 
     @Column(name = "distance_x", nullable = false)
-    private Float distanceX; // Строго с маленькой буквы d!
+    private Float distanceX;
 
     @Column(name = "depth_z", nullable = false)
-    private Float depthZ; // Строго с маленькой буквы d!
+    private Float depthZ;
 
     @Column(name = "layer_name", nullable = false)
     private String layerName;

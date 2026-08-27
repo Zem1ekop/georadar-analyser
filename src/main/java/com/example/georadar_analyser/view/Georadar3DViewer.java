@@ -269,10 +269,74 @@ public class Georadar3DViewer extends Application {
         }
 
         float gridStepX = 4.0f;
+
+        // Задаем безопасный предел интерполяции (минус 5 метров на крайние погрешности файла)
         float maxLimitX = minMaxX - 5.0f;
+        System.out.println("--- ГАРАНТИРОВАННАЯ ДЛИНА ИНТЕРПОЛЯЦИИ УЧАСТКА: " + maxLimitX + " метров ---");
+
+        // --- СТРОИМ ПРОЕКТНУЮ ПОВЕРХНОСТЬ БАЛЛАСТНОЙ ПРИЗМЫ С ОТКОСАМИ ---
+        TriangleMesh projectMesh = new TriangleMesh();
+        List<Float> projectPoints = new ArrayList<>();
+
+        // Задаем наши 11 идеальных конструктивных точек по ширине Y
+        // Обновите координаты сетки Y под наш новый шаблон:
+        // Обновите координаты сетки Y под отцентрированный гостовский шаблон:
+        // Обновите координаты сетки Y под идеально симметричный шаблон:
+        float[] projectYGrid = {-1.0f, -0.6f, 0.0f, 1.5f, 3.0f, 3.5f, 4.0f, 5.5f, 7.0f, 7.6f, 8.2f};
+
+
+
         int gridNodesCountX = (int) (maxLimitX / gridStepX) + 1;
 
+        // Генерируем 3D-узлы для проектной поверхности
+        for (float y : projectYGrid) {
+            for (int i = 0; i < gridNodesCountX; i++) {
+                float targetX = i * gridStepX;
+                float projectZ = getProjectHeight(y); // Считаем плавную высоту по шаблону!
+
+                projectPoints.add(targetX * 1.5f);
+                projectPoints.add(y * 50f);
+                projectPoints.add(-projectZ * 50f);
+            }
+        }
+
+        float[] projPointsArray = new float[projectPoints.size()];
+        for (int i = 0; i < projectPoints.size(); i++) projPointsArray[i] = projectPoints.get(i);
+        projectMesh.getPoints().setAll(projPointsArray);
+        projectMesh.getTexCoords().addAll(0, 0);
+
+        // Связываем треугольники проектной сетки
+        int numProjectProfiles = projectYGrid.length;
+        for (int p = 0; p < numProjectProfiles - 1; p++) {
+            for (int t = 0; t < gridNodesCountX - 1; t++) {
+                int p0 = p * gridNodesCountX + t;
+                int p1 = p0 + 1;
+                int p2 = (p + 1) * gridNodesCountX + t;
+                int p3 = p2 + 1;
+
+                projectMesh.getFaces().addAll(p0, 0, p2, 0, p1, 0);
+                projectMesh.getFaces().addAll(p1, 0, p2, 0, p3, 0);
+            }
+        }
+
+        MeshView projectView = new MeshView(projectMesh);
+        projectView.setCullFace(javafx.scene.shape.CullFace.NONE);
+        projectView.setDrawMode(javafx.scene.shape.DrawMode.FILL);
+
+        PhongMaterial projectMaterial = new PhongMaterial();
+        // Красим верхнюю проектную призму в красивый полупрозрачный серый цвет (эффект стекла)
+        projectMaterial.setDiffuseColor(Color.rgb(180, 180, 180, 0.4));
+        projectView.setMaterial(projectMaterial);
+        Georadar3DViewer.modelGroup.getChildren().add(projectView);
+
+
         for (String layer : layerNames) {
+
+            // ЗАЩИТА: Отключаем отрисовку старой ломаной дневной поверхности
+            if (layer.equalsIgnoreCase("слой 1")) {
+                continue;
+            }
+
             List<RadarProfile> profilesWithThisLayer = new ArrayList<>();
             for (RadarProfile p : section.getProfiles()) {
                 boolean hasLayer = p.getPoints().stream()
@@ -301,8 +365,8 @@ public class Georadar3DViewer extends Application {
                     float interpolatedZ = getInterpolatedZ(layerPoints, targetX);
 
                     pointsList.add(targetX * 1.5f);
-                    pointsList.add(y * 40f);
-                    pointsList.add(-interpolatedZ * 200f);
+                    pointsList.add(y * 50f);
+                    pointsList.add(-interpolatedZ * 50f);
                 }
             }
 
@@ -358,4 +422,73 @@ public class Georadar3DViewer extends Application {
         }
         return points.get(0).getDepthZ();
     }
+
+    /**
+     * ГЕОМЕТРИЧЕСКИЙ ШАБЛОН ДЛЯ ПОСТРОЕНИЯ 3D ПОВЕРХНОСТИ призмы
+     */
+    /**
+     * ГЕОМЕТРИЧЕСКИЙ ШАБЛОН ДЛЯ ПОСТРОЕНИЯ 3D ПОВЕРХНОСТИ С ОТКОСАМИ И КОЛЫБЕЛЯМИ
+     * Менять размеры и высоты можно прямо здесь!
+     */
+    /**
+     * КОРРЕКТНЫЙ ГЕОМЕТРИЧЕСКИЙ ШАБЛОН (Левое плечо Y=0.0м — на верху призмы)
+     */
+    private float getProjectHeight(float y) {
+        // --- ВЫСОТНЫЕ ОТМЕТКИ (Z) ---
+        float hMax = 0.40f; // Высота рельсовой платформы путей (+40 см)
+        float hMid = 0.20f; // Высота междупутья (+20 см)
+        float hMin = 0.0f;  // Базовый уровень земляного полотна (обочины)
+
+        // --- ТОЧКИ ПЕРЕЛОМА ПРОФИЛЯ ПО ОСИ Y ---
+        // --- ТОЧКИ ПЕРЕЛОМА ПРОФИЛЯ ПО ОСИ Y (Симметрично вокруг осей 1.5м и 5.5м) ---
+        // --- ТОЧКИ ПЕРЕЛОМА ПРОФИЛЯ ПО ОСИ Y (АБСОЛЮТНАЯ СИММЕТРИЯ ДЛЯ ОБЕИХ ОСЕЙ) ---
+        float leftSubgradeStart  = -0.6f; // Начало подъема левого внешнего откоса
+        float leftShoulder       = 0.0f;  // Левая бровка балластной призмы (СТАРТ РАДАРА, высота +0.40м)
+        float leftPlatformEnd    = 3.0f;  // Конец платформы 1-го пути (Ось 1.5м СТРОГО ПО ЦЕНТРУ: 0.0 + 1.5 = 1.5)
+        float interTrackStart    = 3.5f;  // Начало площадки междупутья (спуск окончен)
+        float interTrackEnd      = 3.5f;  // Схлопываем междупутье в V-образный лоток (или задайте ширину, например 3.4 - 3.6)
+        float rightSlopeStart    = 4.0f;  // Начало платформы 2-го пути (подъем окончен)
+        float rightPlatformEnd   = 7.0f;  // Правая бровка балластной призмы (Ось 5.5м СТРОГО ПО ЦЕНТРУ: 4.0 + 1.5 = 5.5)
+        float rightSubgradeEnd   = 7.6f;  // Конец правого внешнего откоса балласта на земле
+
+
+
+        // --- МАТЕМАТИКА КУСОЧНО-ЛИНЕЙНОЙ ФУНКЦИИ ---
+        if (y < leftSubgradeStart) {
+            return hMin; // Левая обочина земполотна
+        }
+        else if (y >= leftSubgradeStart && y < leftShoulder) {
+            // ПЛАВНЫЙ ПОДЪЕМ: Внешний левый откос балластной призмы уходит вверх к плечу
+            float ratio = (y - leftSubgradeStart) / (leftShoulder - leftSubgradeStart);
+            return hMin + ratio * (hMax - hMin);
+        }
+        else if (y >= leftShoulder && y < leftPlatformEnd) {
+            return hMax; // ГОРИЗОНТАЛЬ: Платформа 1-го пути (Включает плечо 0.0м и ось 1.5м)
+        }
+        else if (y >= leftPlatformEnd && y < interTrackStart) {
+            // Внутренний спуск от 1-го пути к междупутью
+            float ratio = (y - leftPlatformEnd) / (interTrackStart - leftPlatformEnd);
+            return hMax + ratio * (hMid - hMax);
+        }
+        else if (y >= interTrackStart && y < interTrackEnd) {
+            return hMid; // ГОРИЗОНТАЛЬ: Пониженное междупутье (включает точку 3.5м)
+        }
+        else if (y >= interTrackEnd && y < rightSlopeStart) {
+            // Внутренний подъем от междупутья к 2-му пути
+            float ratio = (y - interTrackEnd) / (rightSlopeStart - interTrackEnd);
+            return hMid + ratio * (hMax - hMid);
+        }
+        else if (y >= rightSlopeStart && y < rightPlatformEnd) {
+            return hMax; // ГОРИЗОНТАЛЬ: Платформа 2-го пути (Включает ось 5.5м и правое плечо 7.0м)
+        }
+        else if (y >= rightPlatformEnd && y < rightSubgradeEnd) {
+            // Внешний правый откос балластной призмы, уходящий вниз к земле
+            float ratio = (y - rightPlatformEnd) / (rightSubgradeEnd - rightPlatformEnd);
+            return hMax + ratio * (hMin - hMax);
+        }
+        else {
+            return hMin; // Правая обочина земполотна
+        }
+    }
+
 }
