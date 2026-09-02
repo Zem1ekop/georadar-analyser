@@ -29,6 +29,7 @@ import javafx.scene.SubScene;
 import javafx.stage.FileChooser;
 import java.io.File;
 import java.io.FileInputStream;
+import javafx.scene.control.Slider;
 
 @Component
 public class Georadar3DViewer extends Application {
@@ -46,6 +47,9 @@ public class Georadar3DViewer extends Application {
     private double mouseOldY;
 
     private List<File> selectedFiles = new ArrayList<>();
+
+    // ДОБАВЛЯЕМ: Динамический масштаб по оси X (стартовое значение 1.5)
+    private float currentScaleX = 1.5f;
 
     public Georadar3DViewer() {}
 
@@ -91,7 +95,33 @@ public class Georadar3DViewer extends Application {
         processBtn.setPrefWidth(210);
         processBtn.setStyle("-fx-background-color: #4CAF50; -fx-text-fill: white; -fx-font-weight: bold;");
 
-        sidePanel.getChildren().addAll(titleLabel, uploadBtn, fileLabel, correctionLabel, correctionInput, processBtn);
+        // Настраиваем ползунок масштаба
+        Label scaleLabel = new Label("Масштаб вдоль пути (X): 1.5x");
+        Slider scaleSlider = new Slider(0.1, 10.0, 1.5);
+        scaleSlider.setShowTickMarks(true);
+        scaleSlider.setShowTickLabels(true);
+        scaleSlider.setMajorTickUnit(2.0);
+
+        scaleSlider.valueProperty().addListener((observable, oldValue, newValue) -> {
+            this.currentScaleX = newValue.floatValue();
+            scaleLabel.setText(String.format("Масштаб вдоль пути (X): %.1fx", this.currentScaleX));
+            if (Georadar3DViewer.targetSectionId != null) {
+                rebuild3DModel(Georadar3DViewer.targetSectionId);
+            }
+        });
+
+        // СТРОГО ОДНА СТРОКА ДОБАВЛЕНИЯ НА ПАНЕЛЬ:
+        sidePanel.getChildren().clear(); // На всякий случай очищаем перед наполнением
+        sidePanel.getChildren().addAll(
+                titleLabel,
+                uploadBtn,
+                fileLabel,
+                correctionLabel,
+                correctionInput,
+                scaleLabel,
+                scaleSlider,
+                processBtn
+        );
 
         // --- НАСТРОЙКА ОБЪЕМНОГО СВЕТА ДЛЯ МАСШТАБА 1:1 ---
         PointLight pointLight = new PointLight(Color.WHITE);
@@ -300,9 +330,9 @@ public class Georadar3DViewer extends Application {
                 float projectZ = getProjectHeight(y); // Считаем плавную высоту по шаблону!
 
                 // Для проектной призмы:
-                projectPoints.add(targetX * 1.5f);
-                projectPoints.add(y * 100f);  // СТАЛО 100f
-                projectPoints.add(-projectZ * 100f); // СТАЛО 100f
+                projectPoints.add(targetX * this.currentScaleX);
+                projectPoints.add(y * 100f);
+                projectPoints.add(-projectZ * 100f);
             }
         }
 
@@ -370,9 +400,9 @@ public class Georadar3DViewer extends Application {
                     float targetX = i * gridStepX;
                     float interpolatedZ = getInterpolatedZ(layerPoints, targetX);
 
-                    pointsList.add(targetX * 1.5f);
-                    pointsList.add(y * 100f);  // СТАЛО 100f
-                    pointsList.add(-interpolatedZ * 100f); // СТАЛО 100f
+                    pointsList.add(targetX * this.currentScaleX);
+                    pointsList.add(y * 100f);
+                    pointsList.add(-interpolatedZ * 100f);
                 }
             }
 
