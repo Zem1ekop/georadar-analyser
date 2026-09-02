@@ -103,13 +103,15 @@ public class Georadar3DViewer extends Application {
         AmbientLight ambientLight = new AmbientLight(Color.rgb(80, 80, 80));
         root3D.getChildren().add(ambientLight);
 
-        camera = new PerspectiveCamera(true);
-        camera.setNearClip(0.1);
-        camera.setFarClip(5000.0);
 
-        camera.setTranslateX(300);
-        camera.setTranslateY(-80);
-        camera.setTranslateZ(-800);
+        camera = new PerspectiveCamera(false); // false отключает перспективу, делая лучи параллельными!
+
+        camera.setNearClip(0.1);
+        camera.setFarClip(10000.0);
+
+        camera.setTranslateX(200);
+        camera.setTranslateY(-100);
+        camera.setTranslateZ(-100);
 
         Group cameraXform = new Group();
         cameraXform.getChildren().add(camera);
@@ -282,7 +284,10 @@ public class Georadar3DViewer extends Application {
         // Обновите координаты сетки Y под наш новый шаблон:
         // Обновите координаты сетки Y под отцентрированный гостовский шаблон:
         // Обновите координаты сетки Y под идеально симметричный шаблон:
-        float[] projectYGrid = {-1.0f, -0.6f, 0.0f, 1.5f, 3.0f, 3.5f, 4.0f, 5.5f, 7.0f, 7.6f, 8.2f};
+        // СТАЛО: Обновленный массив сетки Y под ваши точные чертежные переломы насыпи и призм
+        float[] projectYGrid = {-8.0f, -7.0f, -1.0f, -0.6f, 0.0f, 1.775f, 3.55f, 4.15f, 4.7f, 5.275f, 5.875f, 7.65f, 9.425f, 10.025f, 10.425f, 16.425f, 17.5f};
+
+
 
 
 
@@ -294,9 +299,10 @@ public class Georadar3DViewer extends Application {
                 float targetX = i * gridStepX;
                 float projectZ = getProjectHeight(y); // Считаем плавную высоту по шаблону!
 
+                // Для проектной призмы:
                 projectPoints.add(targetX * 1.5f);
-                projectPoints.add(y * 50f);
-                projectPoints.add(-projectZ * 50f);
+                projectPoints.add(y * 100f);  // СТАЛО 100f
+                projectPoints.add(-projectZ * 100f); // СТАЛО 100f
             }
         }
 
@@ -365,8 +371,8 @@ public class Georadar3DViewer extends Application {
                     float interpolatedZ = getInterpolatedZ(layerPoints, targetX);
 
                     pointsList.add(targetX * 1.5f);
-                    pointsList.add(y * 50f);
-                    pointsList.add(-interpolatedZ * 50f);
+                    pointsList.add(y * 100f);  // СТАЛО 100f
+                    pointsList.add(-interpolatedZ * 100f); // СТАЛО 100f
                 }
             }
 
@@ -424,71 +430,62 @@ public class Georadar3DViewer extends Application {
     }
 
     /**
-     * ГЕОМЕТРИЧЕСКИЙ ШАБЛОН ДЛЯ ПОСТРОЕНИЯ 3D ПОВЕРХНОСТИ призмы
-     */
-    /**
-     * ГЕОМЕТРИЧЕСКИЙ ШАБЛОН ДЛЯ ПОСТРОЕНИЯ 3D ПОВЕРХНОСТИ С ОТКОСАМИ И КОЛЫБЕЛЯМИ
-     * Менять размеры и высоты можно прямо здесь!
-     */
-    /**
-     * КОРРЕКТНЫЙ ГЕОМЕТРИЧЕСКИЙ ШАБЛОН (Левое плечо Y=0.0м — на верху призмы)
+     * ГОСТОВСКИЙ ПРОФИЛЬ ДВУХПУТНОГО ПЕРЕГОНА (Плечи по 40см, Шпалы 2.75м, Плоское междупутье)
      */
     private float getProjectHeight(float y) {
-        // --- ВЫСОТНЫЕ ОТМЕТКИ (Z) ---
-        float hMax = 0.40f; // Высота рельсовой платформы путей (+40 см)
-        float hMid = 0.20f; // Высота междупутья (+20 см)
-        float hMin = 0.0f;  // Базовый уровень земляного полотна (обочины)
+        float hBallastTop   = 0.40f;  // Высота призмы (+40 см)
+        float hSubgradeZero = 0.0f;   // Уровень обочин и междупутья (0.0 м)
+        float hGroundLevel  = -4.0f;  // Земля (-4 метра)
 
-        // --- ТОЧКИ ПЕРЕЛОМА ПРОФИЛЯ ПО ОСИ Y ---
-        // --- ТОЧКИ ПЕРЕЛОМА ПРОФИЛЯ ПО ОСИ Y (Симметрично вокруг осей 1.5м и 5.5м) ---
-        // --- ТОЧКИ ПЕРЕЛОМА ПРОФИЛЯ ПО ОСИ Y (АБСОЛЮТНАЯ СИММЕТРИЯ ДЛЯ ОБЕИХ ОСЕЙ) ---
-        float leftSubgradeStart  = -0.6f; // Начало подъема левого внешнего откоса
-        float leftShoulder       = 0.0f;  // Левая бровка балластной призмы (СТАРТ РАДАРА, высота +0.40м)
-        float leftPlatformEnd    = 3.0f;  // Конец платформы 1-го пути (Ось 1.5м СТРОГО ПО ЦЕНТРУ: 0.0 + 1.5 = 1.5)
-        float interTrackStart    = 3.5f;  // Начало площадки междупутья (спуск окончен)
-        float interTrackEnd      = 3.5f;  // Схлопываем междупутье в V-образный лоток (или задайте ширину, например 3.4 - 3.6)
-        float rightSlopeStart    = 4.0f;  // Начало платформы 2-го пути (подъем окончен)
-        float rightPlatformEnd   = 7.0f;  // Правая бровка балластной призмы (Ось 5.5м СТРОГО ПО ЦЕНТРУ: 4.0 + 1.5 = 5.5)
-        float rightSubgradeEnd   = 7.6f;  // Конец правого внешнего откоса балласта на земле
+        // Точные переломы профиля по оси Y относительно левого плеча 1 пути (y = 0.0)
+        float leftEmbankmentBottom  = -7.000f;
+        float leftBermStart         = -1.000f;
+        float leftBallastSlopeStart = -0.600f;
 
+        float leftShoulderTrack1    = 0.000f;  // Профиль 1 (Левое плечо 1 пути)
+        float rightShoulderTrack1   = 3.550f;  // Правое плечо 1 пути (Ось 1 пути = 1.775м)
+        float leftBallastSlopeEnd   = 4.150f;  // Спуск призмы 1 пути на земполотно
 
+        float rightBallastSlopeStart= 5.275f;  // Начало подъема призмы 2 пути
+        float leftShoulderTrack2    = 5.875f;  // Левое плечо 2 пути
+        float rightShoulderTrack2   = 9.425f;  // Профиль 5 (Правое плечо 2 пути, Ось 2 пути = 7.65м)
 
-        // --- МАТЕМАТИКА КУСОЧНО-ЛИНЕЙНОЙ ФУНКЦИИ ---
-        if (y < leftSubgradeStart) {
-            return hMin; // Левая обочина земполотна
+        float rightBallastSlopeEnd  = 10.025f; // Спуск призмы 2 пути на земполотно
+        float rightBermEnd          = 10.425f; // Правая обочина (+40 см)
+        float rightEmbankmentBottom = 16.425f; // Подошва насыпи
+
+        if (y < leftEmbankmentBottom) return hGroundLevel;
+        else if (y >= leftEmbankmentBottom && y < leftBermStart) {
+            float ratio = (y - leftEmbankmentBottom) / (leftBermStart - leftEmbankmentBottom);
+            return hGroundLevel + ratio * (hSubgradeZero - hGroundLevel);
         }
-        else if (y >= leftSubgradeStart && y < leftShoulder) {
-            // ПЛАВНЫЙ ПОДЪЕМ: Внешний левый откос балластной призмы уходит вверх к плечу
-            float ratio = (y - leftSubgradeStart) / (leftShoulder - leftSubgradeStart);
-            return hMin + ratio * (hMax - hMin);
+        else if (y >= leftBermStart && y < leftBallastSlopeStart) return hSubgradeZero;
+        else if (y >= leftBallastSlopeStart && y < leftShoulderTrack1) {
+            float ratio = (y - leftBallastSlopeStart) / (leftShoulderTrack1 - leftBallastSlopeStart);
+            return hSubgradeZero + ratio * (hBallastTop - hSubgradeZero);
         }
-        else if (y >= leftShoulder && y < leftPlatformEnd) {
-            return hMax; // ГОРИЗОНТАЛЬ: Платформа 1-го пути (Включает плечо 0.0м и ось 1.5м)
+        else if (y >= leftShoulderTrack1 && y < rightShoulderTrack1) return hBallastTop; // Площадка 1 пути
+        else if (y >= rightShoulderTrack1 && y < leftBallastSlopeEnd) {
+            float ratio = (y - rightShoulderTrack1) / (leftBallastSlopeEnd - rightShoulderTrack1);
+            return hBallastTop + ratio * (hSubgradeZero - hBallastTop);
         }
-        else if (y >= leftPlatformEnd && y < interTrackStart) {
-            // Внутренний спуск от 1-го пути к междупутью
-            float ratio = (y - leftPlatformEnd) / (interTrackStart - leftPlatformEnd);
-            return hMax + ratio * (hMid - hMax);
+        else if (y >= leftBallastSlopeEnd && y < rightBallastSlopeStart) {
+            return hSubgradeZero; // ИДЕАЛЬНО ПЛОСКОЕ МЕЖДУПУТЬЕ-ТРАПЕЦИЯ (Высота 0.0м)
         }
-        else if (y >= interTrackStart && y < interTrackEnd) {
-            return hMid; // ГОРИЗОНТАЛЬ: Пониженное междупутье (включает точку 3.5м)
+        else if (y >= rightBallastSlopeStart && y < leftShoulderTrack2) {
+            float ratio = (y - rightBallastSlopeStart) / (leftShoulderTrack2 - rightBallastSlopeStart);
+            return hSubgradeZero + ratio * (hBallastTop - hSubgradeZero);
         }
-        else if (y >= interTrackEnd && y < rightSlopeStart) {
-            // Внутренний подъем от междупутья к 2-му пути
-            float ratio = (y - interTrackEnd) / (rightSlopeStart - interTrackEnd);
-            return hMid + ratio * (hMax - hMid);
+        else if (y >= leftShoulderTrack2 && y < rightShoulderTrack2) return hBallastTop; // Площадка 2 пути
+        else if (y >= rightShoulderTrack2 && y < rightBallastSlopeEnd) {
+            float ratio = (y - rightShoulderTrack2) / (rightBallastSlopeEnd - rightShoulderTrack2);
+            return hBallastTop + ratio * (hSubgradeZero - hBallastTop);
         }
-        else if (y >= rightSlopeStart && y < rightPlatformEnd) {
-            return hMax; // ГОРИЗОНТАЛЬ: Платформа 2-го пути (Включает ось 5.5м и правое плечо 7.0м)
+        else if (y >= rightBallastSlopeEnd && y < rightBermEnd) return hSubgradeZero;
+        else if (y >= rightBermEnd && y < rightEmbankmentBottom) {
+            float ratio = (y - rightBermEnd) / (rightEmbankmentBottom - rightBermEnd);
+            return hSubgradeZero + ratio * (hGroundLevel - hSubgradeZero);
         }
-        else if (y >= rightPlatformEnd && y < rightSubgradeEnd) {
-            // Внешний правый откос балластной призмы, уходящий вниз к земле
-            float ratio = (y - rightPlatformEnd) / (rightSubgradeEnd - rightPlatformEnd);
-            return hMax + ratio * (hMin - hMax);
-        }
-        else {
-            return hMin; // Правая обочина земполотна
-        }
+        else return hGroundLevel;
     }
-
 }

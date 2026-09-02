@@ -54,6 +54,21 @@ public class GeoradarImportService {
                     float distanceX = (float) row.getCell(0).getNumericCellValue() / 100.0f;
                     float lateralOffsetY = (float) row.getCell(1).getNumericCellValue() / 100.0f;
 
+                    // --- ГЕОДЕЗИЧЕСКИЙ АДАПТЕР ПРИВЯЗКИ ПРОФИЛЕЙ К СТРОИТЕЛЬНОМУ ШАБЛОНУ ---
+                    if (Math.abs(lateralOffsetY - 0.0f) < 0.1f) {
+                        lateralOffsetY = 0.000f;  // Профиль 1: Левое плечо 1-го пути мёртво в ноль
+                    } else if (Math.abs(lateralOffsetY - 1.5f) < 0.1f) {
+                        lateralOffsetY = 1.775f;  // Профиль 2: Ось 1-го пути СТРОГО ПО ЦЕНТРУ шпалы
+                    } else if (Math.abs(lateralOffsetY - 3.5f) < 0.1f) {
+                        lateralOffsetY = 4.7125f; // Профиль 3: Междупутье чётко по центру плоской трапеции!
+                    } else if (Math.abs(lateralOffsetY - 5.5f) < 0.1f) {
+                        lateralOffsetY = 7.650f;  // Профиль 4: Ось 2-го пути СТРОГО ПО ЦЕНТРУ второй шпалы
+                    } else if (Math.abs(lateralOffsetY - 7.0f) < 0.1f) {
+                        lateralOffsetY = 9.425f;  // Профиль 5: Правое плечо 2-го пути ложится на бровку балласта
+                    }
+
+
+
                     RadarProfile profile = profileCache.computeIfAbsent(lateralOffsetY, offset -> {
                         RadarProfile newProfile = new RadarProfile();
                         newProfile.setProfileName("Профиль Y=" + offset + "м");
@@ -100,56 +115,31 @@ public class GeoradarImportService {
     }
 
     /**
-     * CAD-МЕТОД КУСОЧНО-ЛИНЕЙНОЙ ИНТЕРПОЛЯЦИИ ПОВЕРХНОСТИ БАЛЛАСТНОЙ ПРИЗМЫ
-     * Рассчитывает плавные подъёмы, откосы и горизонтальные подшпальные площадки.
-     * @param y - текущее смещение от левого плеча в метрах (0.0м - наш базовый ноль)
-     * @param axisCorrection - высота балластной призмы под рельсами (например, +0.40м)
+     * СИНХРОНИЗИРОВАННЫЙ СТРОИТЕЛЬНЫЙ ШАБЛОН ПОВЕРХНОСТИ ДЛЯ ПАРСЕРА
+     * Защищает слои грунта от выпирания на междупутье!
      */
-    private float getSurfaceHeight(float y, float axisCorrection) {
-        float hMax = axisCorrection;      // Высота подшпальной колыбели (+0.40м)
-        float hMid = axisCorrection / 2f; // Высота междупутья (+0.20м)
-        float hMin = 0.0f;                // Высота плеч и обочин (0.0м)
+    private float getSurfaceHeight(float lateralOffset, float axisCorrection) {
+        float hBallastTop   = axisCorrection; // Высота призмы путей (например, +0.40м)
+        float hSubgradeZero = 0.0f;           // Уровень обочин и междупутья (0.0м)
 
-        // ЗОНА 1: Слева от левого плеча (Обочина земляного полотна)
-        if (y < 0.0f) {
-            return hMin; // Абсолютно ровный горизонтальный ноль обочины
+        // Ориентируемся по условным координатам изначального Excel-файла
+        if (Math.abs(lateralOffset - 0.0f) < 0.1f) {
+            return hBallastTop; // Профиль 1 (Левое плечо 1 пути) — на верху призмы!
         }
-        // ЗОНА 2: Внешний откос балластной призмы 1-го пути (Подъём от плеча к шпалам)
-        else if (y >= 0.0f && y < 0.4f) {
-            float ratio = (y - 0.0f) / (0.4f - 0.0f);
-            return hMin + ratio * (hMax - hMin); // Плавно растёт от 0.0м до +0.40м
+        else if (Math.abs(lateralOffset - 1.5f) < 0.1f) {
+            return hBallastTop; // Профиль 2 (Ось 1 пути) — на верху призмы
         }
-        // ЗОНА 3: Горизонтальная подшпальная площадка 1-го пути (Включает ось 1.5м)
-        else if (y >= 0.4f && y < 2.6f) {
-            return hMax; // Ровная плоскость +0.40м, никаких торчащих пиков!
+        else if (Math.abs(lateralOffset - 3.5f) < 0.1f) {
+            // СТАЛО: Междупутье в Excel равно 3.5м. Оно лежит на уровне земполотна!
+            return hSubgradeZero; // Возвращаем честный плоский ноль 0.0м!
         }
-        // ЗОНА 4: Внутренний откос призмы 1-го пути (Спуск к междупутью)
-        else if (y >= 2.6f && y < 3.0f) {
-            float ratio = (y - 2.6f) / (3.0f - 2.6f);
-            return hMax + ratio * (hMid - hMax); // Плавно падает от +0.40м до +0.20м
+        else if (Math.abs(lateralOffset - 5.5f) < 0.1f) {
+            return hBallastTop; // Профиль 4 (Ось 2 пути) — на верху призмы
         }
-        // ЗОНА 5: Горизонтальное междупутье
-        else if (y >= 3.0f && y < 4.0f) {
-            return hMid; // Ровная плоскость разделения путей +0.20м
+        else if (Math.abs(lateralOffset - 7.0f) < 0.1f) {
+            return hBallastTop; // Профиль 5 (Правое плечо 2 пути) — на верху призмы
         }
-        // ЗОНА 6: Внутренний откос призмы 2-го пути (Подъём от междупутья к шпалам)
-        else if (y >= 4.0f && y < 4.4f) {
-            float ratio = (y - 4.0f) / (4.4f - 4.0f);
-            return hMid + ratio * (hMax - hMid); // Плавно растёт от +0.20м до +0.40м
-        }
-        // ЗОНА 7: Горизонтальная подшпальная площадка 2-го пути (Включает ось 5.5м)
-        else if (y >= 4.4f && y < 6.6f) {
-            return hMax; // Ровная плоскость +0.40м под вторым путем
-        }
-        // ЗОНА 8: Внешний откос балластной призмы 2-го пути (Спуск к правому плечу)
-        else if (y >= 6.6f && y < 7.0f) {
-            float ratio = (y - 6.6f) / (7.0f - 6.6f);
-            return hMax + ratio * (hMin - hMax); // Плавно падает от +0.40м до 0.0м
-        }
-        // ЗОНА 9: Правее правого плеча (Правая обочина)
-        else {
-            return hMin; // Возвращаемся в ноль
-        }
+
+        return hSubgradeZero;
     }
-
 }
