@@ -25,10 +25,10 @@ public class GeoradarImportService {
     }
 
     /**
-     * ПАКЕТНЫЙ ИМПОРТ ДАННЫХ GEOSCAN32 С УЧЕТОМ ДИНАМИЧЕСКИХ КОРРЕКЦИЙ
+     * ПАКЕТНЫЙ ИМПОРТ ДАННЫХ GEOSCAN32 С АВТОМАТИЧЕСКОЙ ГЕОДЕЗИЧЕСКОЙ ПРИВЯЗКОЙ
      */
     @Transactional
-    public TrackSection importExcelData(InputStream inputStream, String lineName, Integer trackNumber, float axisCorrection, Long existingSectionId) throws Exception {
+    public TrackSection importExcelData(InputStream inputStream, String lineName, Integer trackNumber, Long existingSectionId) throws Exception {
         log.info("Запуск импорта данных Geoscan32 для линии: {}", lineName);
 
         TrackSection section;
@@ -67,8 +67,6 @@ public class GeoradarImportService {
                         lateralOffsetY = 9.425f;  // Профиль 5: Правое плечо 2-го пути ложится на бровку балласта
                     }
 
-
-
                     RadarProfile profile = profileCache.computeIfAbsent(lateralOffsetY, offset -> {
                         RadarProfile newProfile = new RadarProfile();
                         newProfile.setProfileName("Профиль Y=" + offset + "м");
@@ -86,8 +84,8 @@ public class GeoradarImportService {
                             String layerName = "Слой " + (columnIndex - 1);
                             float rawDepthZ = (float) cell.getNumericCellValue() / 100.0f;
 
-                            // Физический уровень Z = Высота поверхности - Глубина
-                            float correctedDepthZ = getSurfaceHeight(lateralOffsetY, axisCorrection) - rawDepthZ;
+                            // Физический уровень Z = Высота поверхности горба (0.40м) - Глубина из Excel
+                            float correctedDepthZ = getSurfaceHeight(lateralOffsetY) - rawDepthZ;
 
                             LayerPoint point = new LayerPoint();
                             point.setDistanceX(distanceX);
@@ -115,30 +113,17 @@ public class GeoradarImportService {
     }
 
     /**
-     * СИНХРОНИЗИРОВАННЫЙ СТРОИТЕЛЬНЫЙ ШАБЛОН ПОВЕРХНОСТИ ДЛЯ ПАРСЕРА
-     * Защищает слои грунта от выпирания на междупутье!
+     * СИНХРОНИЗИРОВАННЫЙ СТРОИТЕЛЬНЫЙ ШАБЛОН ПОВЕРХНОСТИ (Жёсткие 0.40м по ГОСТ)
      */
-    private float getSurfaceHeight(float lateralOffset, float axisCorrection) {
-        float hBallastTop   = axisCorrection; // Высота призмы путей (например, +0.40м)
-        float hSubgradeZero = 0.0f;           // Уровень обочин и междупутья (0.0м)
+    private float getSurfaceHeight(float lateralOffset) {
+        float hBallastTop   = 0.40f;
+        float hSubgradeZero = 0.0f;
 
-        // Ориентируемся по условным координатам изначального Excel-файла
-        if (Math.abs(lateralOffset - 0.0f) < 0.1f) {
-            return hBallastTop; // Профиль 1 (Левое плечо 1 пути) — на верху призмы!
-        }
-        else if (Math.abs(lateralOffset - 1.5f) < 0.1f) {
-            return hBallastTop; // Профиль 2 (Ось 1 пути) — на верху призмы
-        }
-        else if (Math.abs(lateralOffset - 3.5f) < 0.1f) {
-            // СТАЛО: Междупутье в Excel равно 3.5м. Оно лежит на уровне земполотна!
-            return hSubgradeZero; // Возвращаем честный плоский ноль 0.0м!
-        }
-        else if (Math.abs(lateralOffset - 5.5f) < 0.1f) {
-            return hBallastTop; // Профиль 4 (Ось 2 пути) — на верху призмы
-        }
-        else if (Math.abs(lateralOffset - 7.0f) < 0.1f) {
-            return hBallastTop; // Профиль 5 (Правое плечо 2 пути) — на верху призмы
-        }
+        if (Math.abs(lateralOffset - 0.000f) < 0.01f) return hBallastTop;
+        else if (Math.abs(lateralOffset - 1.775f) < 0.01f) return hBallastTop;
+        else if (Math.abs(lateralOffset - 4.7125f) < 0.01f) return hSubgradeZero;
+        else if (Math.abs(lateralOffset - 7.650f) < 0.01f) return hBallastTop;
+        else if (Math.abs(lateralOffset - 9.425f) < 0.01f) return hBallastTop;
 
         return hSubgradeZero;
     }

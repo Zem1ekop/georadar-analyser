@@ -85,7 +85,7 @@ public class GeoradarAnalyserApplication implements CommandLineRunner {
             java.io.ByteArrayInputStream realExcelStream = new java.io.ByteArrayInputStream(excelBytes);
 
             System.out.println("=== Инициализация текстовых данных георадара ===");
-            var savedSection = importService.importExcelData(realExcelStream, "Тестовый перегон Geoscan32", 1, 0.40f, null);
+            var savedSection = importService.importExcelData(realExcelStream, "Тестовый перегон Geoscan32", 1, null);
 
 
 
