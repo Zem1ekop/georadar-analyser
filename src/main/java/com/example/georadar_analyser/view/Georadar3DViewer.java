@@ -402,12 +402,16 @@ public class Georadar3DViewer extends Application {
                     maxLimitX * this.currentScaleX,  yRight * this.currentScaleYZ, -hSleeperTop * this.currentScaleYZ
             );
             sleeperMesh.getTexCoords().addAll(0,0);
+            // Задаем грани параллелепипеда шпалы (ВКЛЮЧАЯ ТОРЦЫ!)
             sleeperMesh.getFaces().addAll(
-                    0,0, 2,0, 1,0,   1,0, 2,0, 3,0,
-                    4,0, 5,0, 6,0,   5,0, 7,0, 6,0,
-                    0,0, 1,0, 4,0,   1,0, 5,0, 4,0,
-                    2,0, 6,0, 3,0,   3,0, 6,0, 7,0
+                    0,0, 2,0, 1,0,   1,0, 2,0, 3,0, // Низ
+                    4,0, 5,0, 6,0,   5,0, 7,0, 6,0, // Верх
+                    0,0, 1,0, 4,0,   1,0, 5,0, 4,0, // Левый бок
+                    2,0, 6,0, 3,0,   3,0, 6,0, 7,0, // Правый бок
+                    0,0, 4,0, 2,0,   2,0, 4,0, 6,0, // Передний торец (X = 0)
+                    1,0, 3,0, 5,0,   3,0, 7,0, 5,0  // Задний торец (X = maxLimitX)
             );
+
 
             MeshView sleeperView = new MeshView(sleeperMesh);
             sleeperView.setCullFace(javafx.scene.shape.CullFace.NONE);
@@ -417,26 +421,51 @@ public class Georadar3DViewer extends Application {
             Georadar3DViewer.modelGroup.getChildren().add(sleeperView);
         }
 
-        // Строим 4 рельсовые нити поверх шпал (колея 1520мм строго вокруг осей 1.775м и 7.650м)
+        // Строим 4 рельсовые нити поверх шпал (колея 1520мм от истинных осей 1.775м и 7.650м)
         float[] railYCoordinates = {
-                1.775f - 0.76f, 1.775f + 0.76f, // Нити 1-го пути
-                7.650f - 0.76f, 7.650f + 0.76f  // Нити 2-го пути
+                1.775f - 0.76f, 1.775f + 0.76f, // Рельсы 1-го пути
+                7.650f - 0.76f, 7.650f + 0.76f  // Рельсы 2-го пути
         };
+
+        float hRailBottom = hSleeperTop; // Нижняя грань рельса ложится на шпалу (+0.60м)
+        float hRailTop    = hSleeperTop + 0.18f; // Верхняя грань (высота рельса 18 см)
+        float railWidth   = 0.15f; // Ширина подошвы рельса (15 см)
 
         for (float railY : railYCoordinates) {
             TriangleMesh railMesh = new TriangleMesh();
+
+            // Центрируем 15-сантиметровый рельс вокруг его теоретической оси колеи
+            float yLeft  = railY - (railWidth / 2f);
+            float yRight = railY + (railWidth / 2f);
+
+            // Генерируем 8 вершин полноценного 3D-бруса рельса вдоль всего перегона
             railMesh.getPoints().addAll(
-                    0.0f * this.currentScaleX,       railY * this.currentScaleYZ,  -hSleeperTop * this.currentScaleYZ,
-                    maxLimitX * this.currentScaleX,  railY * this.currentScaleYZ,  -hSleeperTop * this.currentScaleYZ,
-                    0.0f * this.currentScaleX,       (railY + 0.04f) * this.currentScaleYZ, -hSleeperTop * this.currentScaleYZ,
-                    maxLimitX * this.currentScaleX,  (railY + 0.04f) * this.currentScaleYZ, -hSleeperTop * this.currentScaleYZ
+                    0.0f * this.currentScaleX,       yLeft * this.currentScaleYZ,  -hRailBottom * this.currentScaleYZ,
+                    maxLimitX * this.currentScaleX,  yLeft * this.currentScaleYZ,  -hRailBottom * this.currentScaleYZ,
+                    0.0f * this.currentScaleX,       yRight * this.currentScaleYZ, -hRailBottom * this.currentScaleYZ,
+                    maxLimitX * this.currentScaleX,  yRight * this.currentScaleYZ, -hRailBottom * this.currentScaleYZ,
+                    0.0f * this.currentScaleX,       yLeft * this.currentScaleYZ,  -hRailTop * this.currentScaleYZ,
+                    maxLimitX * this.currentScaleX,  yLeft * this.currentScaleYZ,  -hRailTop * this.currentScaleYZ,
+                    0.0f * this.currentScaleX,       yRight * this.currentScaleYZ, -hRailTop * this.currentScaleYZ,
+                    maxLimitX * this.currentScaleX,  yRight * this.currentScaleYZ, -hRailTop * this.currentScaleYZ
             );
             railMesh.getTexCoords().addAll(0,0);
-            railMesh.getFaces().addAll(0,0, 2,0, 1,0,   1,0, 2,0, 3,0);
+
+            // Связываем грани параллелепипеда рельса (ВКЛЮЧАЯ ТОРЦЫ!)
+            railMesh.getFaces().addAll(
+                    0,0, 2,0, 1,0,   1,0, 2,0, 3,0, // Низ
+                    4,0, 5,0, 6,0,   5,0, 7,0, 6,0, // Верх
+                    0,0, 1,0, 4,0,   1,0, 5,0, 4,0, // Левый бок
+                    2,0, 6,0, 3,0,   3,0, 6,0, 7,0, // Правый бок
+                    0,0, 4,0, 2,0,   2,0, 4,0, 6,0, // Передний торец (X = 0)
+                    1,0, 3,0, 5,0,   3,0, 7,0, 5,0  // Задний торец (X = maxLimitX)
+            );
+
 
             MeshView railView = new MeshView(railMesh);
             railView.setCullFace(javafx.scene.shape.CullFace.NONE);
-            PhongMaterial railMat = new PhongMaterial(Color.DARKSLATEGRAY); // Стальной цвет рельсов
+            PhongMaterial railMat = new PhongMaterial(Color.DARKSLATEGRAY); // Плотный стальной цвет
+            railMat.setSpecularColor(Color.WHITE); // Блик металла под лучами PointLight
             railView.setMaterial(railMat);
             Georadar3DViewer.modelGroup.getChildren().add(railView);
         }
