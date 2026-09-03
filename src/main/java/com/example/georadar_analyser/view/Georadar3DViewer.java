@@ -30,6 +30,11 @@ import javafx.stage.FileChooser;
 import java.io.File;
 import java.io.FileInputStream;
 
+import javafx.scene.text.Text;
+import javafx.scene.text.Font;
+import javafx.scene.text.FontWeight;
+
+
 @Component
 public class Georadar3DViewer extends Application {
 
@@ -468,6 +473,225 @@ public class Georadar3DViewer extends Application {
             railMat.setSpecularColor(Color.WHITE); // Блик металла под лучами PointLight
             railView.setMaterial(railMat);
             Georadar3DViewer.modelGroup.getChildren().add(railView);
+        }
+
+        // --- ПРОГРАММНОЕ ДОБАВЛЕНИЕ КОНТРАСТНЫХ ЛИНИЙ БРОВОК И ПОДОШВ (12 CAD ЛИНИЙ) ---
+        // Массив строго упорядочен слева направо по оси Y от подошвы до подошвы насыпи
+        float[][] structuralEdges = {
+                {-7.000f, -4.000f},  // 1. НОВАЯ: Подошва левого откоса насыпи
+                {-1.000f, 0.000f},   // 2. Левая бровка земполотна (край обочины)
+                {-0.600f, 0.000f},   // 3. Подошва левого внешнего откоса балласта
+                {0.000f,  0.400f},   // 4. Левая бровка призмы 1 пути (Левое плечо)
+                {3.550f,  0.400f},   // 5. Правое плечо призмы 1 пути
+                {4.150f,  0.000f},   // 6. Подошва правого откоса 1 пути (Начало междупутья)
+                {5.275f,  0.000f},   // 7. Подошва левого откоса 2 пути (Конец междупутья)
+                {5.875f,  0.400f},   // 8. Левое плечо призмы 2 пути
+                {9.425f,  0.400f},   // 9. Правое плечо призмы 2 пути
+                {10.025f, 0.000f},   // 10. Подошва правого внешнего откоса балласта
+                {10.425f, 0.000f},   // 11. Правая бровка земполотна (край обочины)
+                {16.425f, -4.000f}   // 12. Подошва правого откоса насыпи
+
+        };
+
+        PhongMaterial edgeMat = new PhongMaterial(Color.rgb(100, 100, 100)); // Мягкий графитовый цвет
+
+        for (float[] edge : structuralEdges) {
+            float edgeY = edge[0];
+            float edgeZ = edge[1];
+
+            TriangleMesh edgeMesh = new TriangleMesh();
+            // Приподнимаем линию на 0.015м (1.5 см) над стеклом призмы, чтобы полностью исключить Z-fighting!
+            float raisedZ = edgeZ + 0.015f;
+            float lineWidth = 0.03f; // Четкая толщина линии 3 см
+
+            edgeMesh.getPoints().setAll(
+                    0.0f * this.currentScaleX,       edgeY * this.currentScaleYZ,             -raisedZ * this.currentScaleYZ,
+                    maxLimitX * this.currentScaleX,  edgeY * this.currentScaleYZ,             -raisedZ * this.currentScaleYZ,
+                    0.0f * this.currentScaleX,       (edgeY + lineWidth) * this.currentScaleYZ, -raisedZ * this.currentScaleYZ,
+                    maxLimitX * this.currentScaleX,  (edgeY + lineWidth) * this.currentScaleYZ, -raisedZ * this.currentScaleYZ
+            );
+
+            edgeMesh.getTexCoords().addAll(0,0);
+            edgeMesh.getFaces().addAll(0,0, 2,0, 1,0,   1,0, 2,0, 3,0);
+
+            MeshView edgeView = new MeshView(edgeMesh);
+            edgeView.setCullFace(javafx.scene.shape.CullFace.NONE);
+            edgeView.setMaterial(edgeMat);
+            Georadar3DViewer.modelGroup.getChildren().add(edgeView);
+        }
+
+        // --- ПРОГРАММНОЕ ДОБАВЛЕНИЕ ПЛОСКОСТИ ОСНОВАНИЯ НАСЫПИ ---
+        TriangleMesh groundMesh = new TriangleMesh();
+        float groundZ = -4.000f; // Глубина основания (-4 метра реальности)
+        float groundYLeft = -7.000f;  // Левая подошва насыпи
+        float groundYRight = 16.425f; // Правая подошва насыпи
+
+        // Задаем 4 вершины прямоугольника земли вдоль всего перегона
+        groundMesh.getPoints().addAll(
+                0.0f * this.currentScaleX,      groundYLeft * this.currentScaleYZ,  -groundZ * this.currentScaleYZ,
+                maxLimitX * this.currentScaleX, groundYLeft * this.currentScaleYZ,  -groundZ * this.currentScaleYZ,
+                0.0f * this.currentScaleX,      groundYRight * this.currentScaleYZ, -groundZ * this.currentScaleYZ,
+                maxLimitX * this.currentScaleX, groundYRight * this.currentScaleYZ, -groundZ * this.currentScaleYZ
+        );
+        groundMesh.getTexCoords().addAll(0,0);
+        // Затягиваем треугольниками (верхнюю и нижнюю стороны плоскости)
+        groundMesh.getFaces().addAll(
+                0,0, 2,0, 1,0,   1,0, 2,0, 3,0
+        );
+
+        MeshView groundView = new MeshView(groundMesh);
+        groundView.setCullFace(javafx.scene.shape.CullFace.NONE);
+        groundView.setDrawMode(javafx.scene.shape.DrawMode.FILL);
+
+        // --- СТАНДАРТНЫЙ МАТОВЫЙ МАТЕРИАЛ ЗЕМЛИ (БЕЗ ГЛЯНЦА И ОШИБОК API) ---
+        PhongMaterial groundMaterial = new PhongMaterial();
+        Color baseColor = Color.rgb(180, 180, 180, this.currentOpacityEmbankment);
+
+        // Задаем основной цвет
+        groundMaterial.setDiffuseColor(baseColor);
+
+        // Размываем зеркальный блик до минимума, делая поверхность шероховатой
+        groundMaterial.setSpecularColor(Color.rgb(30, 30, 30));
+        groundMaterial.setSpecularPower(1.0); // Максимальное рассеивание лучей света
+
+        groundView.setMaterial(groundMaterial);
+        Georadar3DViewer.modelGroup.getChildren().add(groundView);
+
+
+        // --- ПРОГРАММНОЕ ДОБАВЛЕНИЕ НЕПРЕРЫВНОГО ТОРЦЕВОГО СЕЧЕНИЯ (ВЕРТИКАЛЬНАЯ КАЙМА) ---
+        float[][] crossSectionPoints = {
+                {-7.000f,  -4.000f}, // 1. Левый край основания земли
+                {-1.000f,   0.000f}, // 2. Левая бровка земляного полотна (обочина)
+                {-0.600f,   0.000f}, // 3. Начало левого откоса балластной призмы 1 пути
+                {0.000f,    0.400f}, // 4. Профиль 1: Левое плечо призмы 1 пути
+                {3.550f,    0.400f}, // 5. Конец призмы 1 пути (Правое плечо 1 пути)
+                {4.150f,    0.000f}, // 6. Спуск 1 пути в междупутье
+                {5.275f,    0.000f}, // 7. Ровное междупутье (Начало подъема призмы 2 пути)
+                {5.875f,    0.400f}, // 8. Левое плечо призмы 2 пути
+                {9.425f,    0.400f}, // 9. Профиль 5: Правое плечо призмы 2 пути
+                {10.025f,   0.000f}, // 10. Внешний спуск 2 пути на обочину
+                {10.425f,   0.000f}, // 11. Правая бровка земляного полотна (обочина)
+                {16.425f,  -4.000f}, // 12. Подошва правого откоса насыпи
+                {-7.000f,  -4.000f}  // 13. Замыкаем контур обратно в левую точку земли!
+        };
+
+        float endX = maxLimitX * this.currentScaleX;
+        // Делаем линию чуть толще (4 см), пуская её вертикально вниз, как рамку чертежа
+        float lineWidthEdge = 0.04f;
+
+        for (int i = 0; i < crossSectionPoints.length - 1; i++) {
+            float y1 = crossSectionPoints[i][0];
+            float z1 = crossSectionPoints[i][1];
+            float y2 = crossSectionPoints[i + 1][0];
+            float z2 = crossSectionPoints[i + 1][1];
+
+            // Выносим рамку на 1.5 см ВПЕРЕД перед торцом по оси X (X - 0.015),
+            // чтобы полностью исключить наложение плоскостей (Z-fighting)!
+            float frontX1 = 0.000f - 0.015f;
+            float frontX2 = 0.000f - 0.015f;
+            float backX1  = endX + 0.015f;
+            float backX2  = endX + 0.015f;
+
+            // 1. КОНТУР НА ПЕРЕДНЕМ ТОРЦЕ (Толщина уходит вниз по оси Z!)
+            TriangleMesh frontEdgeMesh = new TriangleMesh();
+            frontEdgeMesh.getPoints().setAll(
+                    frontX1, y1 * this.currentScaleYZ, -z1 * this.currentScaleYZ,
+                    frontX2, y1 * this.currentScaleYZ, -(z1 - lineWidthEdge) * this.currentScaleYZ,
+                    frontX1, y2 * this.currentScaleYZ, -z2 * this.currentScaleYZ,
+                    frontX2, y2 * this.currentScaleYZ, -(z2 - lineWidthEdge) * this.currentScaleYZ
+            );
+            frontEdgeMesh.getTexCoords().addAll(0,0);
+            frontEdgeMesh.getFaces().addAll(0,0, 2,0, 1,0,   1,0, 2,0, 3,0);
+
+            MeshView frontEdgeView = new MeshView(frontEdgeMesh);
+            frontEdgeView.setCullFace(javafx.scene.shape.CullFace.NONE);
+            frontEdgeView.setMaterial(edgeMat); // Наш мягкий серый графитовый цвет
+            Georadar3DViewer.modelGroup.getChildren().add(frontEdgeView);
+
+            // 2. КОНТУР НА ЗАДНЕМ ТОРЦЕ (Толщина уходит вниз по оси Z!)
+            TriangleMesh backEdgeMesh = new TriangleMesh();
+            backEdgeMesh.getPoints().setAll(
+                    backX1, y1 * this.currentScaleYZ, -z1 * this.currentScaleYZ,
+                    backX2, y1 * this.currentScaleYZ, -(z1 - lineWidthEdge) * this.currentScaleYZ,
+                    backX1, y2 * this.currentScaleYZ, -z2 * this.currentScaleYZ,
+                    backX2, y2 * this.currentScaleYZ, -(z2 - lineWidthEdge) * this.currentScaleYZ
+            );
+            backEdgeMesh.getTexCoords().addAll(0,0);
+            backEdgeMesh.getFaces().addAll(0,0, 2,0, 1,0,   1,0, 2,0, 3,0);
+
+            MeshView backEdgeView = new MeshView(backEdgeMesh);
+            backEdgeView.setCullFace(javafx.scene.shape.CullFace.NONE);
+            backEdgeView.setMaterial(edgeMat);
+            Georadar3DViewer.modelGroup.getChildren().add(backEdgeView);
+        }
+
+        // --- ПРОГРАММНОЕ ДОБАВЛЕНИЕ ДВУХСТОРОННЕГО ПИКЕТАЖА (ЛЕВАЯ И ПРАВАЯ ОБОЧИНЫ) ---
+        float piquetZ = 0.000f;  // Уровень земляного полотна
+        int stepMeters = 20;     // Шаг меток - каждые 20 метров
+
+        // Координаты Y для засечек и подписей на левой и правой обочинах
+        float leftBermY   = -1.000f;
+        float rightBermY  = 10.425f;
+
+        for (int meter = 0; meter <= maxLimitX; meter += stepMeters) {
+            float screenX = meter * this.currentScaleX;
+
+            // --- 1. ОРИЕНТАЦИЯ ЛЕВОЙ СТОРОНЫ ---
+            // Физическая засечка слева (Покрашена в мягкий edgeMat!)
+            TriangleMesh leftTick = new TriangleMesh();
+            leftTick.getPoints().addAll(
+                    screenX, leftBermY * this.currentScaleYZ, -piquetZ * this.currentScaleYZ,
+                    screenX, (leftBermY - 0.3f) * this.currentScaleYZ, -piquetZ * this.currentScaleYZ,
+                    screenX + 1.0f, leftBermY * this.currentScaleYZ, -piquetZ * this.currentScaleYZ,
+                    screenX + 1.0f, (leftBermY - 0.3f) * this.currentScaleYZ, -piquetZ * this.currentScaleYZ
+            );
+            leftTick.getTexCoords().addAll(0, 0);
+            leftTick.getFaces().addAll(0, 0, 2, 0, 1, 0, 1, 0, 2, 0, 3, 0);
+            MeshView leftTickView = new MeshView(leftTick);
+            leftTickView.setCullFace(javafx.scene.shape.CullFace.NONE);
+            leftTickView.setMaterial(edgeMat); // СТАЛО: мягкий серый вместо черного вырвиглазного
+            Georadar3DViewer.modelGroup.getChildren().add(leftTickView);
+
+            // Вертикальные маркеры-флажки слева
+            Text leftText = new Text(String.valueOf(meter));
+            leftText.setFont(Font.font("Arial", FontWeight.BOLD, 14));
+            leftText.setFill(Color.DARKSLATEBLUE);
+            leftText.setTranslateX(screenX - 8f);
+            leftText.setTranslateY((leftBermY - 0.5f) * this.currentScaleYZ);
+            leftText.setTranslateZ(-piquetZ * this.currentScaleYZ - 15f);
+
+            javafx.scene.transform.Rotate standVerticalLeft = new javafx.scene.transform.Rotate(90, javafx.scene.transform.Rotate.Z_AXIS);
+            leftText.getTransforms().addAll(standVerticalLeft);
+            Georadar3DViewer.modelGroup.getChildren().add(leftText);
+
+
+            // --- 2. ОРИЕНТАЦИЯ ПРАВОЙ СТОРОНЫ ---
+            // Физическая засечка справа (Покрашена в мягкий edgeMat!)
+            TriangleMesh rightTick = new TriangleMesh();
+            rightTick.getPoints().addAll(
+                    screenX, rightBermY * this.currentScaleYZ, -piquetZ * this.currentScaleYZ,
+                    screenX, (rightBermY + 0.3f) * this.currentScaleYZ, -piquetZ * this.currentScaleYZ,
+                    screenX + 1.0f, rightBermY * this.currentScaleYZ, -piquetZ * this.currentScaleYZ,
+                    screenX + 1.0f, (rightBermY + 0.3f) * this.currentScaleYZ, -piquetZ * this.currentScaleYZ
+            );
+            rightTick.getTexCoords().addAll(0, 0);
+            rightTick.getFaces().addAll(0, 0, 2, 0, 1, 0, 1, 0, 2, 0, 3, 0);
+            MeshView rightTickView = new MeshView(rightTick);
+            rightTickView.setCullFace(javafx.scene.shape.CullFace.NONE);
+            rightTickView.setMaterial(edgeMat); // СТАЛО: мягкий серый вместо черного
+            Georadar3DViewer.modelGroup.getChildren().add(rightTickView);
+
+            // Вертикальные маркеры-флажки справа
+            Text rightText = new Text(String.valueOf(meter));
+            rightText.setFont(Font.font("Arial", FontWeight.BOLD, 14));
+            rightText.setFill(Color.DARKSLATEBLUE);
+            rightText.setTranslateX(screenX - 8f);
+            rightText.setTranslateY((rightBermY + 0.4f) * this.currentScaleYZ);
+            rightText.setTranslateZ(-piquetZ * this.currentScaleYZ - 15f);
+
+            javafx.scene.transform.Rotate standVerticalRight = new javafx.scene.transform.Rotate(90, javafx.scene.transform.Rotate.Z_AXIS);
+            rightText.getTransforms().addAll(standVerticalRight);
+            Georadar3DViewer.modelGroup.getChildren().add(rightText);
         }
     }
 
