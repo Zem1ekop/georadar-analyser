@@ -126,22 +126,17 @@ public class Georadar3DViewer extends Application {
 
         // 4. Текстовое поле для ввода начальной отметки километража по ПУ-9
         Label startLocationLabel = new Label("Начальная отметка X (м):");
-        TextField startLocationInput = new TextField("0.0");
+        javafx.scene.control.TextField startLocationInput = new javafx.scene.control.TextField("0.0");
         startLocationInput.setPrefWidth(210);
 
-        // СЛУШАТЕЛЬ: при изменении текста мгновенно пересчитываем шкалу пикетажа
         startLocationInput.textProperty().addListener((obs, oldText, newText) -> {
             try {
-                // Если поле пустое, временно считаем за 0
                 this.startLocationX = newText.trim().isEmpty() ? 0.0f : Float.parseFloat(newText.trim());
-                if (Georadar3DViewer.targetSectionId != null) {
-                    rebuild3DModel(Georadar3DViewer.targetSectionId);
-                }
+                if (Georadar3DViewer.targetSectionId != null) rebuild3DModel(Georadar3DViewer.targetSectionId);
             } catch (NumberFormatException e) {
-                // Защита от случайного ввода букв инженером
+                // Игнорируем некорректный ввод букв
             }
         });
-
 
         Button processBtn = new Button("Визуализировать 3D");
         processBtn.setPrefWidth(210);
@@ -156,7 +151,6 @@ public class Georadar3DViewer extends Application {
         AmbientLight ambientLight = new AmbientLight(Color.rgb(100, 100, 100));
         root3D.getChildren().add(ambientLight);
 
-        // Настройка честной Ортографической CAD-камеры
         camera = new PerspectiveCamera(false);
         camera.setNearClip(0.1);
         camera.setFarClip(15000.0);
@@ -170,14 +164,29 @@ public class Georadar3DViewer extends Application {
         cameraXform.setTranslateY(-10);
         root3D.getChildren().add(cameraXform);
 
-        SubScene subScene3D = new SubScene(root3D, 774, 768, true, SceneAntialiasing.BALANCED);
-        subScene3D.setCamera(camera);
-        subScene3D.widthProperty().bind(mainLayout.widthProperty().subtract(250));
-        subScene3D.heightProperty().bind(mainLayout.heightProperty());
+        // --- ИНИЦИАЛИЗАЦИЯ ДВУХЗОННОГО ИНТЕРФЕЙСА ЧЕРЕЗ SPLITPANE ---
+        javafx.scene.control.SplitPane centerSplitPane = new javafx.scene.control.SplitPane();
+        centerSplitPane.setOrientation(javafx.geometry.Orientation.VERTICAL);
 
-        mainLayout.setLeft(sidePanel);
-        mainLayout.setCenter(subScene3D);
-        Scene scene = new Scene(mainLayout, 1024, 768);
+        // Верхняя зона: 3D-модель насыпи
+        SubScene subScene3D = new SubScene(root3D, 774, 450, true, SceneAntialiasing.BALANCED);
+        subScene3D.setCamera(camera);
+        subScene3D.widthProperty().bind(centerSplitPane.widthProperty());
+        subScene3D.heightProperty().bind(centerSplitPane.heightProperty().multiply(0.65)); // 3D занимает 65% высоты
+
+        // Нижняя зона: Белый холст для плоского 2D CAD-чертежа водоупора
+        javafx.scene.layout.Pane crossSectionCanvas2D = new javafx.scene.layout.Pane();
+        crossSectionCanvas2D.setStyle("-fx-background-color: #FFFFFF; -fx-border-color: #999999; -fx-border-width: 1 0 0 0;");
+        crossSectionCanvas2D.setPrefHeight(270);
+
+        Label canvasPlaceholder = new Label("2D Поперечный разрез ВСП. Кликните на 3D-модели для снятия профиля.");
+        canvasPlaceholder.setStyle("-fx-font-style: italic; -fx-text-fill: #888888;");
+        canvasPlaceholder.setPadding(new Insets(15));
+        crossSectionCanvas2D.getChildren().add(canvasPlaceholder);
+
+        // Собираем разделитель
+        centerSplitPane.getItems().addAll(subScene3D, crossSectionCanvas2D);
+        centerSplitPane.setDividerPositions(0.65f);
 
         uploadBtn.setOnAction(event -> {
             FileChooser fileChooser = new FileChooser();
@@ -206,7 +215,6 @@ public class Georadar3DViewer extends Application {
                 Long freshSectionId = null;
                 for (File file : this.selectedFiles) {
                     try (FileInputStream fis = new FileInputStream(file)) {
-                        // ЧИСТЫЙ ВЫЗОВ: аргумент поправки удален!
                         TrackSection freshSection = Georadar3DViewer.importService.importExcelData(
                                 fis, "Участок Geoscan32", 1, freshSectionId
                         );
@@ -263,18 +271,20 @@ public class Georadar3DViewer extends Application {
                 startLocationLabel, startLocationInput,
                 processBtn
         );
-        rebuild3DModel(targetSectionId);
+
+        mainLayout.setLeft(sidePanel);
+        mainLayout.setCenter(centerSplitPane); // Подключаем SplitPane со всеми окнами!
+
+        Scene scene = new Scene(mainLayout, 1100, 800);
         primaryStage.setTitle("Инженерная CAD-панель георадарного анализа ж/д пути");
         primaryStage.setScene(scene);
         primaryStage.show();
         subScene3D.requestFocus();
     }
 
-
-
     /**
-     * ПРОМЫШЛЕННЫЙ CAD-МЕТОД ТРИАНГУЛЯЦИИ ПО РЕГУЛЯРНОЙ СЕТКЕ ИНТЕРПОЛЯЦИИ
-     */
+         * ПРОМЫШЛЕННЫЙ CAD-МЕТОД ТРИАНГУЛЯЦИИ ПО РЕГУЛЯРНОЙ СЕТКЕ ИНТЕРПОЛЯЦИИ
+         */
     private void rebuild3DModel(Long sectionId) {
         Georadar3DViewer.modelGroup.getChildren().clear();
 
