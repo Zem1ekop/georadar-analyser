@@ -58,6 +58,8 @@ public class Georadar3DViewer extends Application {
 
     // Начальная путевая отметка (абсолютный пикетаж в метрах)
     private float startLocationX = 0.0f;
+    private float currentInspectX = 0.0f;
+    private static javafx.scene.layout.Pane crossSectionCanvas2D;
 
     public Georadar3DViewer() {}
 
@@ -138,6 +140,33 @@ public class Georadar3DViewer extends Application {
             }
         });
 
+        // 5. Текстовое поле для точного выбора метра разреза по ПУ-9/Шкале
+        Label inspectLabel = new Label("Снять разрез на метре (X):");
+        javafx.scene.control.TextField inspectInput = new javafx.scene.control.TextField("0.0");
+        inspectInput.setPrefWidth(210);
+        inspectInput.setStyle("-fx-border-color: #0066CC; -fx-border-width: 1;");
+
+        // СЛУШАТЕЛЬ: при вводе метра мгновенно перестраиваем 2D-поперечник!
+        inspectInput.textProperty().addListener((obs, oldText, newText) -> {
+            try {
+                if (!newText.trim().isEmpty()) {
+                    float userMeter = Float.parseFloat(newText.trim());
+                    // Переводим абсолютный метр обратно в локальный X для базы данных
+                    this.currentInspectX = userMeter - this.startLocationX;
+
+                    // СТЕРЛИ СТРОЧКУ, КОТОРАЯ ПРИРАВНИВАЛА МИНУС К НУЛЮ!
+
+                    if (Georadar3DViewer.targetSectionId != null) {
+                        drawCrossSection2D(this.currentInspectX);
+                    }
+                }
+            } catch (NumberFormatException e) {
+                // Защита от ввода букв
+            }
+        });
+
+
+
         Button processBtn = new Button("Визуализировать 3D");
         processBtn.setPrefWidth(210);
         processBtn.setStyle("-fx-background-color: #4CAF50; -fx-text-fill: white; -fx-font-weight: bold;");
@@ -175,7 +204,7 @@ public class Georadar3DViewer extends Application {
         subScene3D.heightProperty().bind(centerSplitPane.heightProperty().multiply(0.65)); // 3D занимает 65% высоты
 
         // Нижняя зона: Белый холст для плоского 2D CAD-чертежа водоупора
-        javafx.scene.layout.Pane crossSectionCanvas2D = new javafx.scene.layout.Pane();
+        crossSectionCanvas2D = new javafx.scene.layout.Pane();
         crossSectionCanvas2D.setStyle("-fx-background-color: #FFFFFF; -fx-border-color: #999999; -fx-border-width: 1 0 0 0;");
         crossSectionCanvas2D.setPrefHeight(270);
 
@@ -269,6 +298,7 @@ public class Georadar3DViewer extends Application {
                 scaleYZLabel, scaleYZSlider,
                 opacityLabel, opacitySlider,
                 startLocationLabel, startLocationInput,
+                inspectLabel, inspectInput,
                 processBtn
         );
 
@@ -811,5 +841,148 @@ public class Georadar3DViewer extends Application {
         }
         return points.get(0).getDepthZ();
     }
+
+    /**
+     * ПОЛНОЦЕННЫЙ 2D CAD-ЧЕРТЕЖ ПОПЕРЕЧНОГО СЕЧЕНИЯ НАСЫПИ И ВСП
+     */
+    private void drawCrossSection2D(float meterX) {
+        if (crossSectionCanvas2D == null || Georadar3DViewer.targetSectionId == null) return;
+
+        // 1. Полностью очищаем холст от старых чертежей
+        crossSectionCanvas2D.getChildren().clear();
+
+        // Подгружаем данные участка из репозитория
+        Optional<TrackSection> sectionOpt = Georadar3DViewer.sectionRepository.findByIdWithWithAllData(Georadar3DViewer.targetSectionId);
+        if (sectionOpt.isEmpty()) return;
+        TrackSection section = sectionOpt.get();
+
+        // --- СТРОГИЙ ВАЛИДАТОР ГРАНИЦ ПО САМОМУ КОРОТКОМУ ПРОФИЛЮ ---
+        float realMaxLimitX = Float.MAX_VALUE; // Начинаем поиск с максимума
+        for (RadarProfile p : section.getProfiles()) {
+            if (p.getPoints() != null && !p.getPoints().isEmpty()) {
+                List<LayerPoint> sortedPts = new ArrayList<>(p.getPoints());
+                sortedPts.sort(Comparator.comparing(LayerPoint::getDistanceX));
+                float profileLastX = sortedPts.get(sortedPts.size() - 1).getDistanceX();
+                // Ищем САМЫЙ КОРОТКИЙ профиль (минимум), чтобы исключить фантомы!
+                if (profileLastX < realMaxLimitX) realMaxLimitX = profileLastX;
+            }
+        }
+
+        // Если вдруг данные не загрузились, подстрахуемся
+        if (realMaxLimitX == Float.MAX_VALUE) realMaxLimitX = 0.0f;
+
+        // Если инженер просит снять разрез МЕНЬШЕ начала участка или БОЛЬШЕ длины съёмки
+        if ((meterX + 0.001f) < 0 || meterX > realMaxLimitX) {
+            Label errorLabel = new Label(String.format(
+                    "ОШИБКА: Запрошенная отметка %d м находится за пределами профиля!\n" +
+                            "Съемка производилась на участке: %.0f - %.0f м.",
+                    Math.round(meterX + this.startLocationX),
+                    this.startLocationX,
+                    this.startLocationX + realMaxLimitX
+            ));
+            errorLabel.setStyle("-fx-font-weight: bold; -fx-font-size: 14px; -fx-text-fill: #D32F2F;");
+            errorLabel.setTranslateX(15);
+            errorLabel.setTranslateY(15);
+            crossSectionCanvas2D.getChildren().add(errorLabel);
+            return; // МГНОВЕННЫЙ ВЫХОД И БЛОКИРОВКА ФАНТОМОВ!
+        }
+
+        // 2. CAD Настройки масштабирования (1 метр реальности = 25 пикселей холста)
+        float scale = 25.0f;
+        float offsetX = 220.0f; // Сдвиг вправо, чтобы отцентрировать насыпь
+        float centerY = 180.0f; // Базовый уровень нуля земляного полотна на холсте
+
+        // Вспомогательные лямбды-функции перевода путевых координат в пиксели экрана
+        java.util.function.Function<Float, Double> mapY = y -> (double) (offsetX + (y + 7.0f) * scale);
+        java.util.function.Function<Float, Double> mapZ = z -> (double) (centerY - z * scale);
+
+        // 3. ОТРИСОВКА ИНФОРМАЦИОННОЙ ШАПКИ ЧЕРТЕЖА
+        int absoluteMeter = (int) Math.round(meterX + this.startLocationX);
+        Label infoLabel = new Label(String.format("Поперечный профиль на отметке: %d м (локальный X = %.2f м)", absoluteMeter, meterX));
+        infoLabel.setStyle("-fx-font-weight: bold; -fx-font-size: 14px; -fx-text-fill: #0066CC;");
+        infoLabel.setTranslateX(15);
+        infoLabel.setTranslateY(10);
+        crossSectionCanvas2D.getChildren().add(infoLabel);
+
+
+        // 4. ОТРЕСОВКА ОЧЕРТАНИЙ НАСЫПИ И ЗЕМЛЯНОГО ПОЛОТНА (Серый контур)
+        float[] projectYGrid = {-7.0f, -1.0f, -0.6f, 0.0f, 1.775f, 3.55f, 4.15f, 4.7f, 5.275f, 5.875f, 7.65f, 9.425f, 10.025f, 10.425f, 16.425f};
+        javafx.scene.shape.Polyline embankmentPolyline = new javafx.scene.shape.Polyline();
+        embankmentPolyline.setStroke(Color.rgb(100, 100, 100));
+        embankmentPolyline.setStrokeWidth(2.0);
+
+        for (float y : projectYGrid) {
+            float z = getProjectHeight(y);
+            embankmentPolyline.getPoints().addAll(mapY.apply(y), mapZ.apply(z));
+        }
+        crossSectionCanvas2D.getChildren().add(embankmentPolyline);
+
+        // Линия горизонтального основания земли
+        javafx.scene.shape.Line groundLine = new javafx.scene.shape.Line(mapY.apply(-7.0f), mapZ.apply(-4.0f), mapY.apply(16.425f), mapZ.apply(-4.0f));
+        groundLine.setStroke(Color.rgb(120, 120, 120));
+        groundLine.getStrokeDashArray().addAll(5.0, 5.0); // Пунктир основания
+        crossSectionCanvas2D.getChildren().add(groundLine);
+
+        // 5. ОТРЕСОВКА ШПАЛЬНЫХ БРУСЬЕВ НА СРЕЗЕ (Коричневые прямоугольники)
+        float[][] trackSleeperBounds = {{0.400f, 3.150f}, {6.275f, 9.025f}};
+        for (float[] bounds : trackSleeperBounds) {
+            double sLeft   = mapY.apply(bounds[0]);
+            double sRight  = mapY.apply(bounds[1]);
+            double sTop    = mapZ.apply(0.60f);
+            double sBottom = mapZ.apply(0.40f);
+
+            javafx.scene.shape.Rectangle sleeperRect = new javafx.scene.shape.Rectangle(sLeft, sTop, (sRight - sLeft), (sBottom - sTop));
+            sleeperRect.setFill(Color.rgb(120, 90, 60));
+            sleeperRect.setStroke(Color.rgb(80, 60, 40));
+            crossSectionCanvas2D.getChildren().add(sleeperRect);
+        }
+
+        // 6. ОТРЕСОВКА РЕЛЬСОВЫХ НИТЕЙ НА СРЕЗЕ (Стальные квадраты Р65)
+        float[] railYCoordinates = {1.775f - 0.76f, 1.775f + 0.76f, 7.650f - 0.76f, 7.650f + 0.76f};
+        for (float railY : railYCoordinates) {
+            double rLeft   = mapY.apply(railY - 0.075f);
+            double rRight  = mapY.apply(railY + 0.075f);
+            double rTop    = mapZ.apply(0.78f);
+            double rBottom = mapZ.apply(0.60f);
+
+            javafx.scene.shape.Rectangle railRect = new javafx.scene.shape.Rectangle(rLeft, rTop, (rRight - rLeft), (rBottom - rTop));
+            railRect.setFill(Color.DARKSLATEGRAY);
+            crossSectionCanvas2D.getChildren().add(railRect);
+        }
+
+        // 7. ИНТЕРПОЛЯЦИЯ И ОТРИСОВКА ГЕОРАДАРНЫХ СЛОЕВ ГРУНТА ИЗ БАЗЫ
+        Map<String, Color> layerColors = Map.of("слой 2", Color.GOLD, "слой 3", Color.SADDLEBROWN);
+        List<RadarProfile> sortedProfiles = new ArrayList<>(section.getProfiles());
+        sortedProfiles.sort(Comparator.comparing(RadarProfile::getLateralOffset));
+
+        for (Map.Entry<String, Color> entry : layerColors.entrySet()) {
+            String layerName = entry.getKey();
+            Color color = entry.getValue();
+
+            javafx.scene.shape.Polyline layerPolyline = new javafx.scene.shape.Polyline();
+            layerPolyline.setStroke(color);
+            layerPolyline.setStrokeWidth(2.5);
+
+            boolean hasPoints = false;
+            for (RadarProfile p : sortedProfiles) {
+                List<LayerPoint> okPoints = new ArrayList<>();
+                for (LayerPoint pt : p.getPoints()) {
+                    if (pt.getLayerName().equalsIgnoreCase(layerName)) okPoints.add(pt);
+                }
+                if (okPoints.isEmpty()) continue;
+                okPoints.sort(Comparator.comparing(LayerPoint::getDistanceX));
+
+                // Извлекаем глубину слоя на заданном метре X
+                float interpolatedZ = getInterpolatedZ(okPoints, meterX);
+                layerPolyline.getPoints().addAll(mapY.apply(p.getLateralOffset()), mapZ.apply(interpolatedZ));
+                hasPoints = true;
+            }
+
+            if (hasPoints) {
+                crossSectionCanvas2D.getChildren().add(layerPolyline);
+            }
+        }
+    }
+
 }
 
