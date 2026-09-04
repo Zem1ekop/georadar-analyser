@@ -12,6 +12,7 @@ import javafx.scene.PerspectiveCamera;
 import javafx.scene.PointLight;
 import javafx.scene.Scene;
 import javafx.scene.SceneAntialiasing;
+import javafx.scene.control.TextField;
 import javafx.scene.paint.Color;
 import javafx.scene.paint.PhongMaterial;
 import javafx.scene.shape.MeshView;
@@ -54,6 +55,9 @@ public class Georadar3DViewer extends Application {
     private float currentScaleX = 1.5f;
     private float currentScaleYZ = 100.0f;
     private float currentOpacityEmbankment = 0.4f;
+
+    // Начальная путевая отметка (абсолютный пикетаж в метрах)
+    private float startLocationX = 0.0f;
 
     public Georadar3DViewer() {}
 
@@ -119,6 +123,25 @@ public class Georadar3DViewer extends Application {
             opacityLabel.setText(String.format("Прозрачность насыпи: %.0f%%", this.currentOpacityEmbankment * 100));
             if (Georadar3DViewer.targetSectionId != null) rebuild3DModel(Georadar3DViewer.targetSectionId);
         });
+
+        // 4. Текстовое поле для ввода начальной отметки километража по ПУ-9
+        Label startLocationLabel = new Label("Начальная отметка X (м):");
+        TextField startLocationInput = new TextField("0.0");
+        startLocationInput.setPrefWidth(210);
+
+        // СЛУШАТЕЛЬ: при изменении текста мгновенно пересчитываем шкалу пикетажа
+        startLocationInput.textProperty().addListener((obs, oldText, newText) -> {
+            try {
+                // Если поле пустое, временно считаем за 0
+                this.startLocationX = newText.trim().isEmpty() ? 0.0f : Float.parseFloat(newText.trim());
+                if (Georadar3DViewer.targetSectionId != null) {
+                    rebuild3DModel(Georadar3DViewer.targetSectionId);
+                }
+            } catch (NumberFormatException e) {
+                // Защита от случайного ввода букв инженером
+            }
+        });
+
 
         Button processBtn = new Button("Визуализировать 3D");
         processBtn.setPrefWidth(210);
@@ -232,7 +255,14 @@ public class Georadar3DViewer extends Application {
             if (newZ >= -5000 && newZ <= -10) camera.setTranslateZ(newZ);
         });
 
-        sidePanel.getChildren().addAll(titleLabel, uploadBtn, fileLabel, scaleXLabel, scaleXSlider, scaleYZLabel, scaleYZSlider, opacityLabel, opacitySlider, processBtn);
+        sidePanel.getChildren().addAll(
+                titleLabel, uploadBtn, fileLabel,
+                scaleXLabel, scaleXSlider,
+                scaleYZLabel, scaleYZSlider,
+                opacityLabel, opacitySlider,
+                startLocationLabel, startLocationInput,
+                processBtn
+        );
         rebuild3DModel(targetSectionId);
         primaryStage.setTitle("Инженерная CAD-панель георадарного анализа ж/д пути");
         primaryStage.setScene(scene);
@@ -316,7 +346,7 @@ public class Georadar3DViewer extends Application {
         meshViewProj.setCullFace(javafx.scene.shape.CullFace.NONE);
         meshViewProj.setDrawMode(javafx.scene.shape.DrawMode.FILL);
         PhongMaterial projectMaterial = new PhongMaterial();
-        // СТАЛО: прозрачность насыпи берется прямо с ползунка панели!
+
         projectMaterial.setDiffuseColor(Color.rgb(180, 180, 180, this.currentOpacityEmbankment));
         meshViewProj.setMaterial(projectMaterial);
         Georadar3DViewer.modelGroup.getChildren().add(meshViewProj);
@@ -653,7 +683,10 @@ public class Georadar3DViewer extends Application {
             Georadar3DViewer.modelGroup.getChildren().add(leftTickView);
 
             // Вертикальные маркеры-флажки слева
-            Text leftText = new Text(String.valueOf(meter));
+            //Text leftText = new Text(String.valueOf(meter));
+
+            int absoluteMeter = Math.round(meter + this.startLocationX);
+            Text leftText = new Text(String.valueOf(absoluteMeter));
             leftText.setFont(Font.font("Arial", FontWeight.BOLD, 14));
             leftText.setFill(Color.DARKSLATEBLUE);
             leftText.setTranslateX(screenX - 8f);
@@ -682,7 +715,8 @@ public class Georadar3DViewer extends Application {
             Georadar3DViewer.modelGroup.getChildren().add(rightTickView);
 
             // Вертикальные маркеры-флажки справа
-            Text rightText = new Text(String.valueOf(meter));
+            //Text rightText = new Text(String.valueOf(meter));
+            Text rightText = new Text(String.valueOf(absoluteMeter));
             rightText.setFont(Font.font("Arial", FontWeight.BOLD, 14));
             rightText.setFill(Color.DARKSLATEBLUE);
             rightText.setTranslateX(screenX - 8f);
