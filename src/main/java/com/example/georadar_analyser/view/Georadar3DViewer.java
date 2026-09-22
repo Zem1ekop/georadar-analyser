@@ -845,6 +845,9 @@ public class Georadar3DViewer extends Application {
     /**
      * ПОЛНОЦЕННЫЙ 2D CAD-ЧЕРТЕЖ ПОПЕРЕЧНОГО СЕЧЕНИЯ НАСЫПИ И ВСП
      */
+    /**
+     * ПОЛНОЦЕННЫЙ 2D CAD-ЧЕРТЕЖ ПОПЕРЕЧНОГО СЕЧЕНИЯ НАСЫПИ И ТАБЛИЦА СЛОЕВ
+     */
     private void drawCrossSection2D(float meterX) {
         if (crossSectionCanvas2D == null || Georadar3DViewer.targetSectionId == null) return;
 
@@ -857,21 +860,18 @@ public class Georadar3DViewer extends Application {
         TrackSection section = sectionOpt.get();
 
         // --- СТРОГИЙ ВАЛИДАТОР ГРАНИЦ ПО САМОМУ КОРОТКОМУ ПРОФИЛЮ ---
-        float realMaxLimitX = Float.MAX_VALUE; // Начинаем поиск с максимума
+        float realMaxLimitX = Float.MAX_VALUE;
         for (RadarProfile p : section.getProfiles()) {
             if (p.getPoints() != null && !p.getPoints().isEmpty()) {
                 List<LayerPoint> sortedPts = new ArrayList<>(p.getPoints());
                 sortedPts.sort(Comparator.comparing(LayerPoint::getDistanceX));
                 float profileLastX = sortedPts.get(sortedPts.size() - 1).getDistanceX();
-                // Ищем САМЫЙ КОРОТКИЙ профиль (минимум), чтобы исключить фантомы!
                 if (profileLastX < realMaxLimitX) realMaxLimitX = profileLastX;
             }
         }
 
-        // Если вдруг данные не загрузились, подстрахуемся
         if (realMaxLimitX == Float.MAX_VALUE) realMaxLimitX = 0.0f;
 
-        // Если инженер просит снять разрез МЕНЬШЕ начала участка или БОЛЬШЕ длины съёмки
         if ((meterX + 0.001f) < 0 || meterX > realMaxLimitX) {
             Label errorLabel = new Label(String.format(
                     "ОШИБКА: Запрошенная отметка %d м находится за пределами профиля!\n" +
@@ -884,26 +884,24 @@ public class Georadar3DViewer extends Application {
             errorLabel.setTranslateX(15);
             errorLabel.setTranslateY(15);
             crossSectionCanvas2D.getChildren().add(errorLabel);
-            return; // МГНОВЕННЫЙ ВЫХОД И БЛОКИРОВКА ФАНТОМОВ!
+            return; // МГНОВЕННЫЙ ВЫХОД
         }
 
-        // 2. CAD Настройки масштабирования (1 метр реальности = 25 пикселей холста)
+        // 2. КОМПАКТНЫЕ НАСТРОЙКИ МАСШТАБИРОВАНИЯ (Сдвиг влево на 30 пикселей)
         float scale = 25.0f;
-        float offsetX = 220.0f; // Сдвиг вправо, чтобы отцентрировать насыпь
-        float centerY = 180.0f; // Базовый уровень нуля земляного полотна на холсте
+        float offsetX = 30.0f;
+        float centerY = 180.0f;
 
-        // Вспомогательные лямбды-функции перевода путевых координат в пиксели экрана
         java.util.function.Function<Float, Double> mapY = y -> (double) (offsetX + (y + 7.0f) * scale);
         java.util.function.Function<Float, Double> mapZ = z -> (double) (centerY - z * scale);
 
-        // 3. ОТРИСОВКА ИНФОРМАЦИОННОЙ ШАПКИ ЧЕРТЕЖА
+        // 3. ОТРИСОВКА ИНФОРМАЦИОННОЙ ШАПКИ ЧЕРТЕЖА (Строго над поперечником)
         int absoluteMeter = (int) Math.round(meterX + this.startLocationX);
         Label infoLabel = new Label(String.format("Поперечный профиль на отметке: %d м (локальный X = %.2f м)", absoluteMeter, meterX));
         infoLabel.setStyle("-fx-font-weight: bold; -fx-font-size: 14px; -fx-text-fill: #0066CC;");
-        infoLabel.setTranslateX(15);
-        infoLabel.setTranslateY(10);
+        infoLabel.setTranslateX(30);
+        infoLabel.setTranslateY(15);
         crossSectionCanvas2D.getChildren().add(infoLabel);
-
 
         // 4. ОТРЕСОВКА ОЧЕРТАНИЙ НАСЫПИ И ЗЕМЛЯНОГО ПОЛОТНА (Серый контур)
         float[] projectYGrid = {-7.0f, -1.0f, -0.6f, 0.0f, 1.775f, 3.55f, 4.15f, 4.7f, 5.275f, 5.875f, 7.65f, 9.425f, 10.025f, 10.425f, 16.425f};
@@ -920,10 +918,10 @@ public class Georadar3DViewer extends Application {
         // Линия горизонтального основания земли
         javafx.scene.shape.Line groundLine = new javafx.scene.shape.Line(mapY.apply(-7.0f), mapZ.apply(-4.0f), mapY.apply(16.425f), mapZ.apply(-4.0f));
         groundLine.setStroke(Color.rgb(120, 120, 120));
-        groundLine.getStrokeDashArray().addAll(5.0, 5.0); // Пунктир основания
+        groundLine.getStrokeDashArray().addAll(5.0, 5.0);
         crossSectionCanvas2D.getChildren().add(groundLine);
 
-        // 5. ОТРЕСОВКА ШПАЛЬНЫХ БРУСЬЕВ НА СРЕЗЕ (Коричневые прямоугольники)
+        // 5. ОТРЕСОВКА ШПАЛЬНЫХ БРУСЬЕВ НА СРЕЗЕ
         float[][] trackSleeperBounds = {{0.400f, 3.150f}, {6.275f, 9.025f}};
         for (float[] bounds : trackSleeperBounds) {
             double sLeft   = mapY.apply(bounds[0]);
@@ -937,7 +935,7 @@ public class Georadar3DViewer extends Application {
             crossSectionCanvas2D.getChildren().add(sleeperRect);
         }
 
-        // 6. ОТРЕСОВКА РЕЛЬСОВЫХ НИТЕЙ НА СРЕЗЕ (Стальные квадраты Р65)
+        // 6. ОТРЕСОВКА РЕЛЬСОВЫХ НИТЕЙ НА СРЕЗЕ
         float[] railYCoordinates = {1.775f - 0.76f, 1.775f + 0.76f, 7.650f - 0.76f, 7.650f + 0.76f};
         for (float railY : railYCoordinates) {
             double rLeft   = mapY.apply(railY - 0.075f);
@@ -972,7 +970,6 @@ public class Georadar3DViewer extends Application {
                 if (okPoints.isEmpty()) continue;
                 okPoints.sort(Comparator.comparing(LayerPoint::getDistanceX));
 
-                // Извлекаем глубину слоя на заданном метре X
                 float interpolatedZ = getInterpolatedZ(okPoints, meterX);
                 layerPolyline.getPoints().addAll(mapY.apply(p.getLateralOffset()), mapZ.apply(interpolatedZ));
                 hasPoints = true;
@@ -982,7 +979,124 @@ public class Georadar3DViewer extends Application {
                 crossSectionCanvas2D.getChildren().add(layerPolyline);
             }
         }
+
+        // --- 9. ЦИФРОВАЯ ВЕДОМОСТЬ ВЫСОТНЫХ ОТМЕТОК СЛОЕВ (3 СЛОЯ И РАСЧЕТНАЯ УВЯЗКА) ---
+        double startTableX = 660.0; // Сдвигаем на 660px, чтобы влезла третья колонка
+        double startTableY = 120.0;
+        double rowHeight   = 24.0;
+        int currentRow = 0;
+
+        Label tableTitle = new Label("📊 Ведомость отметок слоёв (Z, м):");
+        tableTitle.setStyle("-fx-font-weight: bold; -fx-text-fill: #333333; -fx-font-size: 14px;");
+        tableTitle.setTranslateX(startTableX);
+        tableTitle.setTranslateY(startTableY + (currentRow++ * rowHeight));
+        crossSectionCanvas2D.getChildren().add(tableTitle);
+
+        // СТАЛО: Шапка расширена до 3-х колонок (Дневная, Щебень, Водоупор)
+        Label tableHeader = new Label(String.format("%-18s | %-7s | %-7s | %-8s", "Профиль (Y, м)", "Слой 1", "Слой 2", "Водоупор"));
+        tableHeader.setStyle("-fx-font-family: 'Courier New'; -fx-font-weight: bold; -fx-text-fill: #666666; -fx-font-size: 14px;");
+        tableHeader.setTranslateX(startTableX);
+        tableHeader.setTranslateY(startTableY + (currentRow++ * rowHeight));
+        crossSectionCanvas2D.getChildren().add(tableHeader);
+
+        Label separator = new Label("---------------------------------------------------------");
+        separator.setStyle("-fx-font-family: 'Courier New'; -fx-text-fill: #CCCCCC; -fx-font-size: 14px;");
+        separator.setTranslateX(startTableX);
+        separator.setTranslateY(startTableY + (currentRow++ * rowHeight));
+        crossSectionCanvas2D.getChildren().add(separator);
+
+        for (RadarProfile p : sortedProfiles) {
+            float yOffset = p.getLateralOffset();
+            String profileName = String.format("Y = %-6.3f", yOffset);
+
+            if (Math.abs(yOffset - 0.000f) < 0.05f)  profileName = "Лев. плечо (0.00)";
+            else if (Math.abs(yOffset - 1.775f) < 0.05f) profileName = "Ось 1 пути (1.77)";
+            else if (Math.abs(yOffset - 4.7125f) < 0.05f) profileName = "Междупутье (4.71)";
+            else if (Math.abs(yOffset - 7.650f) < 0.05f)  profileName = "Ось 2 пути (7.65)";
+            else if (Math.abs(yOffset - 9.425f) < 0.05f)  profileName = "Прав. плечо (9.42)";
+
+            List<LayerPoint> allPoints = p.getPoints() != null ? new ArrayList<>(p.getPoints()) : new ArrayList<>();
+
+            // 1. Сбор точек для Первого слоя (Дневная поверхность)
+            List<LayerPoint> l1Pts = new ArrayList<>();
+            for (LayerPoint pt : allPoints) {
+                String name = pt.getLayerName().toLowerCase().trim();
+                if (name.contains("слой 1") || name.contains("слой1") || name.contains("layer 1") || name.contains("layer1") || name.contains("cлой 1")) l1Pts.add(pt);
+            }
+            String z1Str = "  н/д  ";
+            if (!l1Pts.isEmpty()) {
+                l1Pts.sort(Comparator.comparing(LayerPoint::getDistanceX));
+                z1Str = String.format("%-7.2f", getInterpolatedZ(l1Pts, meterX));
+            }
+
+            // 2. Сбор точек для Второго слоя (Щебёночная призма)
+            List<LayerPoint> l2Pts = new ArrayList<>();
+            for (LayerPoint pt : allPoints) {
+                String name = pt.getLayerName().toLowerCase().trim();
+                if (name.contains("слой 2") || name.contains("слой2") || name.contains("layer 2") || name.contains("layer2") || name.contains("cлой 2")) l2Pts.add(pt);
+            }
+            String z2Str = "  н/д  ";
+            if (!l2Pts.isEmpty()) {
+                l2Pts.sort(Comparator.comparing(LayerPoint::getDistanceX));
+                z2Str = String.format("%-7.2f", getInterpolatedZ(l2Pts, meterX));
+            }
+
+            // 3. Сбор точек для Третьего слоя (Водоупорная глина) с автоувязкой пустой оси АБ-700 по уклонам чертежа
+            List<LayerPoint> l3Pts = new ArrayList<>();
+            for (LayerPoint pt : allPoints) {
+                String name = pt.getLayerName().toLowerCase().trim();
+                if (name.contains("слой 3") || name.contains("слой3") || name.contains("layer 3") || name.contains("layer3") || name.contains("cлой 3")) l3Pts.add(pt);
+            }
+
+            String z3Str;
+            if (!l3Pts.isEmpty()) {
+                l3Pts.sort(Comparator.comparing(LayerPoint::getDistanceX));
+                z3Str = String.format("%-7.2f", getInterpolatedZ(l3Pts, meterX));
+            } else {
+                // Если АБ-700 не добила до глины, вычисляем точку пересечения ломаной линии чертежа под рельсами
+                float zLeft  = getBermLayer3Z(section, 0.000f, meterX);
+                float zMid   = getBermLayer3Z(section, 4.7125f, meterX);
+                float zRight = getBermLayer3Z(section, 9.425f, meterX);
+
+                if (Math.abs(yOffset - 1.775f) < 0.05f && zLeft != Float.MIN_VALUE && zMid != Float.MIN_VALUE) {
+                    float zCalc1 = zLeft + (zMid - zLeft) * 0.37666f;
+                    z3Str = String.format("%-5.2f*", zCalc1); // Расчётный маркер увязки по уклону призмы
+                } else if (Math.abs(yOffset - 7.650f) < 0.05f && zMid != Float.MIN_VALUE && zRight != Float.MIN_VALUE) {
+                    float zCalc2 = zMid + (zRight - zMid) * 0.62333f;
+                    z3Str = String.format("%-5.2f*", zCalc2);
+                } else {
+                    z3Str = "  н/д  ";
+                }
+            }
+
+            // Выводим строчки ведомости (Формат расширен до 3-х колонок)
+            Label rowLabel = new Label(String.format("%-18s | %-7s | %-7s | %-8s", profileName, z1Str, z2Str, z3Str));
+            rowLabel.setStyle("-fx-font-family: 'Courier New'; -fx-text-fill: #444444; -fx-font-size: 14px;");
+            rowLabel.setTranslateX(startTableX);
+            rowLabel.setTranslateY(startTableY + (currentRow++ * rowHeight));
+            crossSectionCanvas2D.getChildren().add(rowLabel);
+        }
     }
 
+    /**
+     * Вспомогательный метод для подгрузки отметок Слоя 3 с базовых профилей АБ-250
+     */
+    private float getBermLayer3Z(TrackSection section, float targetY, float meterX) {
+        Optional<RadarProfile> pOpt = section.getProfiles().stream()
+                .filter(p -> Math.abs(p.getLateralOffset() - targetY) < 0.05f)
+                .findFirst();
+        if (pOpt.isPresent()) {
+            List<LayerPoint> pts = new ArrayList<>();
+            for (LayerPoint pt : pOpt.get().getPoints()) {
+                String name = pt.getLayerName().toLowerCase().trim();
+                if (name.contains("слой 3") || name.contains("слой3") || name.contains("layer 3") || name.contains("cлой 3")) pts.add(pt);
+            }
+            if (!pts.isEmpty()) {
+                pts.sort(Comparator.comparing(LayerPoint::getDistanceX));
+                return getInterpolatedZ(pts, meterX);
+            }
+        }
+        return Float.MIN_VALUE;
+    }
 }
 
