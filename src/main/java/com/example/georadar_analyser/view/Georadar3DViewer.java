@@ -938,23 +938,7 @@ public class Georadar3DViewer extends Application {
         crossSectionCanvas2D.getChildren().add(mainScaleLine);
 
 
-        // 4. ОТРЕСОВКА ОЧЕРТАНИЙ НАСЫПИ И ЗЕМЛЯНОГО ПОЛОТНА (Серый контур)
-        float[] projectYGrid = {-7.0f, -1.0f, -0.6f, 0.0f, 1.775f, 3.55f, 4.15f, 4.7f, 5.275f, 5.875f, 7.65f, 9.425f, 10.025f, 10.425f, 16.425f};
-        javafx.scene.shape.Polyline embankmentPolyline = new javafx.scene.shape.Polyline();
-        embankmentPolyline.setStroke(Color.rgb(100, 100, 100));
-        embankmentPolyline.setStrokeWidth(2.0);
 
-        for (float y : projectYGrid) {
-            float z = getProjectHeight(y);
-            embankmentPolyline.getPoints().addAll(mapY.apply(y), mapZ.apply(z));
-        }
-        crossSectionCanvas2D.getChildren().add(embankmentPolyline);
-
-        // Линия горизонтального основания земли
-        javafx.scene.shape.Line groundLine = new javafx.scene.shape.Line(mapY.apply(-7.0f), mapZ.apply(-4.0f), mapY.apply(16.425f), mapZ.apply(-4.0f));
-        groundLine.setStroke(Color.rgb(120, 120, 120));
-        groundLine.getStrokeDashArray().addAll(5.0, 5.0);
-        crossSectionCanvas2D.getChildren().add(groundLine);
 
         // 5. ОТРЕСОВКА ШПАЛЬНЫХ БРУСЬЕВ НА СРЕЗЕ
         float[][] trackSleeperBounds = {{0.400f, 3.150f}, {6.275f, 9.025f}};
@@ -1012,7 +996,7 @@ public class Georadar3DViewer extends Application {
             crossSectionCanvas2D.getChildren().add(axisLabel);
         }
 
-        // 7. ИНТЕРПОЛЯЦИЯ И ОТРИСОВКА ГЕОРАДАРНЫХ СЛОЕВ ГРУНТА ИЗ БАЗЫ
+        // 7. ИНТЕРПОЛЯЦИЯ И ОТРИСОВКА ГЕОРАДАРНЫХ СЛОЕВ С ПОЛНОДИАПАЗОННЫМ ДОТЯГИВАНИЕМ ДО ОТКОСОВ
         Map<String, Color> layerColors = Map.of("слой 2", Color.GOLD, "слой 3", Color.SADDLEBROWN);
         List<RadarProfile> sortedProfiles = new ArrayList<>(section.getProfiles());
         sortedProfiles.sort(Comparator.comparing(RadarProfile::getLateralOffset));
@@ -1021,11 +1005,7 @@ public class Georadar3DViewer extends Application {
             String layerName = entry.getKey();
             Color color = entry.getValue();
 
-            javafx.scene.shape.Polyline layerPolyline = new javafx.scene.shape.Polyline();
-            layerPolyline.setStroke(color);
-            layerPolyline.setStrokeWidth(2.5);
-
-            boolean hasPoints = false;
+            List<java.awt.geom.Point2D.Float> currentLayerPoints = new ArrayList<>();
             for (RadarProfile p : sortedProfiles) {
                 List<LayerPoint> okPoints = new ArrayList<>();
                 for (LayerPoint pt : p.getPoints()) {
@@ -1035,14 +1015,85 @@ public class Georadar3DViewer extends Application {
                 okPoints.sort(Comparator.comparing(LayerPoint::getDistanceX));
 
                 float interpolatedZ = getInterpolatedZ(okPoints, meterX);
-                layerPolyline.getPoints().addAll(mapY.apply(p.getLateralOffset()), mapZ.apply(interpolatedZ));
-                hasPoints = true;
+                currentLayerPoints.add(new java.awt.geom.Point2D.Float(p.getLateralOffset(), interpolatedZ));
             }
 
-            if (hasPoints) {
+            if (currentLayerPoints.size() >= 2) {
+                javafx.scene.shape.Polyline layerPolyline = new javafx.scene.shape.Polyline();
+                layerPolyline.setStroke(color);
+                layerPolyline.setStrokeWidth(2.5);
+
+                // --- 7.1. РАСЧЕТ ЛЕВОЙ ВРЕЗКИ (РАЗРЕШАЕМ ДВИЖЕНИЕ ДО ПОДОШВЫ Y = -7.0м) ---
+                java.awt.geom.Point2D.Float firstPt = currentLayerPoints.get(0);
+                java.awt.geom.Point2D.Float secondPt = currentLayerPoints.get(1);
+                float kLeft = (secondPt.y - firstPt.y) / (secondPt.x - firstPt.x + 0.001f);
+
+                // Тянем луч до самого края левой земли
+                float extLeftY = -7.0f;
+                float extLeftZ = firstPt.y + kLeft * (extLeftY - firstPt.x);
+
+                // Идем пошагово назад от плеча, чтобы найти честное пересечение с ломаным рельефом откоса
+                for (float tempY = firstPt.x; tempY >= -7.0f; tempY -= 0.1f) {
+                    float tempZ = firstPt.y + kLeft * (tempY - firstPt.x);
+                    float slopeZ = getProjectHeight(tempY);
+                    if (tempZ >= slopeZ) {
+                        extLeftY = tempY;
+                        extLeftZ = slopeZ;
+                        break; // Наткнулись на откос — фиксируем точку врезки!
+                    }
+                }
+
+                if (extLeftZ < -4.0f) { extLeftZ = -4.0f; extLeftY = -7.0f; } // Ограничитель дна
+                layerPolyline.getPoints().addAll(mapY.apply(extLeftY), mapZ.apply(extLeftZ));
+
+                // Добавляем все основные реальные точки радарного сканирования
+                for (java.awt.geom.Point2D.Float pt : currentLayerPoints) {
+                    layerPolyline.getPoints().addAll(mapY.apply(pt.x), mapZ.apply(pt.y));
+                }
+
+                // --- 7.2. РАСЧЕТ ПРАВОЙ ВРЕЗКИ (РАЗРЕШАЕМ ДВИЖЕНИЕ ДО ПОДОШВЫ Y = 16.425м) ---
+                java.awt.geom.Point2D.Float lastPt = currentLayerPoints.get(currentLayerPoints.size() - 1);
+                java.awt.geom.Point2D.Float prevLastPt = currentLayerPoints.get(currentLayerPoints.size() - 2);
+                float kRight = (lastPt.y - prevLastPt.y) / (lastPt.x - prevLastPt.x + 0.001f);
+
+                float extRightY = 16.425f;
+                float extRightZ = lastPt.y + kRight * (extRightY - lastPt.x);
+
+                // Идем пошагово вперед от правого плеча в поле
+                for (float tempY = lastPt.x; tempY <= 16.425f; tempY += 0.1f) {
+                    float tempZ = lastPt.y + kRight * (tempY - lastPt.x);
+                    float slopeZ = getProjectHeight(tempY);
+                    if (tempZ >= slopeZ) {
+                        extRightY = tempY;
+                        extRightZ = slopeZ;
+                        break; // Врезались в правый скат насыпи!
+                    }
+                }
+
+                if (extRightZ < -4.0f) { extRightZ = -4.0f; extRightY = 16.425f; }
+                layerPolyline.getPoints().addAll(mapY.apply(extRightY), mapZ.apply(extRightZ));
+
                 crossSectionCanvas2D.getChildren().add(layerPolyline);
             }
         }
+
+        // 8. ОТРЕСОВКА ОЧЕРТАНИЙ НАСЫПИ И ЗЕМЛЯНОГО ПОЛОТНА (Серый контур)
+        float[] projectYGrid = {-7.0f, -1.0f, -0.6f, 0.0f, 1.775f, 3.55f, 4.15f, 4.7f, 5.275f, 5.875f, 7.65f, 9.425f, 10.025f, 10.425f, 16.425f};
+        javafx.scene.shape.Polyline embankmentPolyline = new javafx.scene.shape.Polyline();
+        embankmentPolyline.setStroke(Color.rgb(100, 100, 100));
+        embankmentPolyline.setStrokeWidth(2.0);
+
+        for (float y : projectYGrid) {
+            float z = getProjectHeight(y);
+            embankmentPolyline.getPoints().addAll(mapY.apply(y), mapZ.apply(z));
+        }
+        crossSectionCanvas2D.getChildren().add(embankmentPolyline);
+
+        // Линия горизонтального основания земли
+        javafx.scene.shape.Line groundLine = new javafx.scene.shape.Line(mapY.apply(-7.0f), mapZ.apply(-4.0f), mapY.apply(16.425f), mapZ.apply(-4.0f));
+        groundLine.setStroke(Color.rgb(120, 120, 120));
+        groundLine.getStrokeDashArray().addAll(5.0, 5.0);
+        crossSectionCanvas2D.getChildren().add(groundLine);
 
         // --- 9. ЦИФРОВАЯ ВЕДОМОСТЬ ОТНОСИТЕЛЬНЫХ ГЛУБИН СЛОЕВ (ОТСЧЕТ ОТ ДНЕВНОЙ ПОВЕРХНОСТИ) ---
         double startTableX = 740.0;
@@ -1063,7 +1114,7 @@ public class Georadar3DViewer extends Application {
         tableHeader.setTranslateY(startTableY + (currentRow++ * rowHeight));
         crossSectionCanvas2D.getChildren().add(tableHeader);
 
-        Label separator = new Label("---------------------------------------------------------");
+        Label separator = new Label("-------------------------------------------------");
         separator.setStyle("-fx-font-family: 'Courier New'; -fx-text-fill: #CCCCCC; -fx-font-size: 14px;");
         separator.setTranslateX(startTableX);
         separator.setTranslateY(startTableY + (currentRow++ * rowHeight));
