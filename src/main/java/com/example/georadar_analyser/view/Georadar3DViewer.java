@@ -61,7 +61,8 @@ public class Georadar3DViewer extends Application {
     private float currentInspectX = 0.0f;
     private static javafx.scene.layout.Pane crossSectionCanvas2D;
 
-    public Georadar3DViewer() {}
+    public Georadar3DViewer() {
+    }
 
     public void viewSection(Long sectionId, TrackSectionRepository repository, GeoradarImportService service) {
         Georadar3DViewer.sectionRepository = repository;
@@ -164,7 +165,6 @@ public class Georadar3DViewer extends Application {
                 // Защита от ввода букв
             }
         });
-
 
 
         Button processBtn = new Button("Визуализировать 3D");
@@ -274,8 +274,10 @@ public class Georadar3DViewer extends Application {
             mousePosY = me.getSceneY();
         });
         subScene3D.setOnMouseDragged(me -> {
-            mouseOldX = mousePosX; mouseOldY = mousePosY;
-            mousePosX = me.getSceneX(); mousePosY = me.getSceneY();
+            mouseOldX = mousePosX;
+            mouseOldY = mousePosY;
+            mousePosX = me.getSceneX();
+            mousePosY = me.getSceneY();
             double mouseDeltaX = (mousePosX - mouseOldX);
             double mouseDeltaY = (mousePosY - mouseOldY);
             if (me.isPrimaryButtonDown()) {
@@ -313,8 +315,8 @@ public class Georadar3DViewer extends Application {
     }
 
     /**
-         * ПРОМЫШЛЕННЫЙ CAD-МЕТОД ТРИАНГУЛЯЦИИ ПО РЕГУЛЯРНОЙ СЕТКЕ ИНТЕРПОЛЯЦИИ
-         */
+     * ПРОМЫШЛЕННЫЙ CAD-МЕТОД ТРИАНГУЛЯЦИИ ПО РЕГУЛЯРНОЙ СЕТКЕ ИНТЕРПОЛЯЦИИ
+     */
     private void rebuild3DModel(Long sectionId) {
         Georadar3DViewer.modelGroup.getChildren().clear();
 
@@ -467,24 +469,24 @@ public class Georadar3DViewer extends Application {
             float yRight = bounds[1];
 
             sleeperMesh.getPoints().addAll(
-                    0.0f * this.currentScaleX,       yLeft * this.currentScaleYZ,  -hBallastTop * this.currentScaleYZ,
-                    maxLimitX * this.currentScaleX,  yLeft * this.currentScaleYZ,  -hBallastTop * this.currentScaleYZ,
-                    0.0f * this.currentScaleX,       yRight * this.currentScaleYZ, -hBallastTop * this.currentScaleYZ,
-                    maxLimitX * this.currentScaleX,  yRight * this.currentScaleYZ, -hBallastTop * this.currentScaleYZ,
-                    0.0f * this.currentScaleX,       yLeft * this.currentScaleYZ,  -hSleeperTop * this.currentScaleYZ,
-                    maxLimitX * this.currentScaleX,  yLeft * this.currentScaleYZ,  -hSleeperTop * this.currentScaleYZ,
-                    0.0f * this.currentScaleX,       yRight * this.currentScaleYZ, -hSleeperTop * this.currentScaleYZ,
-                    maxLimitX * this.currentScaleX,  yRight * this.currentScaleYZ, -hSleeperTop * this.currentScaleYZ
+                    0.0f * this.currentScaleX, yLeft * this.currentScaleYZ, -hBallastTop * this.currentScaleYZ,
+                    maxLimitX * this.currentScaleX, yLeft * this.currentScaleYZ, -hBallastTop * this.currentScaleYZ,
+                    0.0f * this.currentScaleX, yRight * this.currentScaleYZ, -hBallastTop * this.currentScaleYZ,
+                    maxLimitX * this.currentScaleX, yRight * this.currentScaleYZ, -hBallastTop * this.currentScaleYZ,
+                    0.0f * this.currentScaleX, yLeft * this.currentScaleYZ, -hSleeperTop * this.currentScaleYZ,
+                    maxLimitX * this.currentScaleX, yLeft * this.currentScaleYZ, -hSleeperTop * this.currentScaleYZ,
+                    0.0f * this.currentScaleX, yRight * this.currentScaleYZ, -hSleeperTop * this.currentScaleYZ,
+                    maxLimitX * this.currentScaleX, yRight * this.currentScaleYZ, -hSleeperTop * this.currentScaleYZ
             );
-            sleeperMesh.getTexCoords().addAll(0,0);
+            sleeperMesh.getTexCoords().addAll(0, 0);
             // Задаем грани параллелепипеда шпалы (ВКЛЮЧАЯ ТОРЦЫ!)
             sleeperMesh.getFaces().addAll(
-                    0,0, 2,0, 1,0,   1,0, 2,0, 3,0, // Низ
-                    4,0, 5,0, 6,0,   5,0, 7,0, 6,0, // Верх
-                    0,0, 1,0, 4,0,   1,0, 5,0, 4,0, // Левый бок
-                    2,0, 6,0, 3,0,   3,0, 6,0, 7,0, // Правый бок
-                    0,0, 4,0, 2,0,   2,0, 4,0, 6,0, // Передний торец (X = 0)
-                    1,0, 3,0, 5,0,   3,0, 7,0, 5,0  // Задний торец (X = maxLimitX)
+                    0, 0, 2, 0, 1, 0, 1, 0, 2, 0, 3, 0, // Низ
+                    4, 0, 5, 0, 6, 0, 5, 0, 7, 0, 6, 0, // Верх
+                    0, 0, 1, 0, 4, 0, 1, 0, 5, 0, 4, 0, // Левый бок
+                    2, 0, 6, 0, 3, 0, 3, 0, 6, 0, 7, 0, // Правый бок
+                    0, 0, 4, 0, 2, 0, 2, 0, 4, 0, 6, 0, // Передний торец (X = 0)
+                    1, 0, 3, 0, 5, 0, 3, 0, 7, 0, 5, 0  // Задний торец (X = maxLimitX)
             );
 
 
@@ -503,37 +505,37 @@ public class Georadar3DViewer extends Application {
         };
 
         float hRailBottom = hSleeperTop; // Нижняя грань рельса ложится на шпалу (+0.60м)
-        float hRailTop    = hSleeperTop + 0.18f; // Верхняя грань (высота рельса 18 см)
-        float railWidth   = 0.15f; // Ширина подошвы рельса (15 см)
+        float hRailTop = hSleeperTop + 0.18f; // Верхняя грань (высота рельса 18 см)
+        float railWidth = 0.15f; // Ширина подошвы рельса (15 см)
 
         for (float railY : railYCoordinates) {
             TriangleMesh railMesh = new TriangleMesh();
 
             // Центрируем 15-сантиметровый рельс вокруг его теоретической оси колеи
-            float yLeft  = railY - (railWidth / 2f);
+            float yLeft = railY - (railWidth / 2f);
             float yRight = railY + (railWidth / 2f);
 
             // Генерируем 8 вершин полноценного 3D-бруса рельса вдоль всего перегона
             railMesh.getPoints().addAll(
-                    0.0f * this.currentScaleX,       yLeft * this.currentScaleYZ,  -hRailBottom * this.currentScaleYZ,
-                    maxLimitX * this.currentScaleX,  yLeft * this.currentScaleYZ,  -hRailBottom * this.currentScaleYZ,
-                    0.0f * this.currentScaleX,       yRight * this.currentScaleYZ, -hRailBottom * this.currentScaleYZ,
-                    maxLimitX * this.currentScaleX,  yRight * this.currentScaleYZ, -hRailBottom * this.currentScaleYZ,
-                    0.0f * this.currentScaleX,       yLeft * this.currentScaleYZ,  -hRailTop * this.currentScaleYZ,
-                    maxLimitX * this.currentScaleX,  yLeft * this.currentScaleYZ,  -hRailTop * this.currentScaleYZ,
-                    0.0f * this.currentScaleX,       yRight * this.currentScaleYZ, -hRailTop * this.currentScaleYZ,
-                    maxLimitX * this.currentScaleX,  yRight * this.currentScaleYZ, -hRailTop * this.currentScaleYZ
+                    0.0f * this.currentScaleX, yLeft * this.currentScaleYZ, -hRailBottom * this.currentScaleYZ,
+                    maxLimitX * this.currentScaleX, yLeft * this.currentScaleYZ, -hRailBottom * this.currentScaleYZ,
+                    0.0f * this.currentScaleX, yRight * this.currentScaleYZ, -hRailBottom * this.currentScaleYZ,
+                    maxLimitX * this.currentScaleX, yRight * this.currentScaleYZ, -hRailBottom * this.currentScaleYZ,
+                    0.0f * this.currentScaleX, yLeft * this.currentScaleYZ, -hRailTop * this.currentScaleYZ,
+                    maxLimitX * this.currentScaleX, yLeft * this.currentScaleYZ, -hRailTop * this.currentScaleYZ,
+                    0.0f * this.currentScaleX, yRight * this.currentScaleYZ, -hRailTop * this.currentScaleYZ,
+                    maxLimitX * this.currentScaleX, yRight * this.currentScaleYZ, -hRailTop * this.currentScaleYZ
             );
-            railMesh.getTexCoords().addAll(0,0);
+            railMesh.getTexCoords().addAll(0, 0);
 
             // Связываем грани параллелепипеда рельса (ВКЛЮЧАЯ ТОРЦЫ!)
             railMesh.getFaces().addAll(
-                    0,0, 2,0, 1,0,   1,0, 2,0, 3,0, // Низ
-                    4,0, 5,0, 6,0,   5,0, 7,0, 6,0, // Верх
-                    0,0, 1,0, 4,0,   1,0, 5,0, 4,0, // Левый бок
-                    2,0, 6,0, 3,0,   3,0, 6,0, 7,0, // Правый бок
-                    0,0, 4,0, 2,0,   2,0, 4,0, 6,0, // Передний торец (X = 0)
-                    1,0, 3,0, 5,0,   3,0, 7,0, 5,0  // Задний торец (X = maxLimitX)
+                    0, 0, 2, 0, 1, 0, 1, 0, 2, 0, 3, 0, // Низ
+                    4, 0, 5, 0, 6, 0, 5, 0, 7, 0, 6, 0, // Верх
+                    0, 0, 1, 0, 4, 0, 1, 0, 5, 0, 4, 0, // Левый бок
+                    2, 0, 6, 0, 3, 0, 3, 0, 6, 0, 7, 0, // Правый бок
+                    0, 0, 4, 0, 2, 0, 2, 0, 4, 0, 6, 0, // Передний торец (X = 0)
+                    1, 0, 3, 0, 5, 0, 3, 0, 7, 0, 5, 0  // Задний торец (X = maxLimitX)
             );
 
 
@@ -551,12 +553,12 @@ public class Georadar3DViewer extends Application {
                 {-7.000f, -4.000f},  // 1. НОВАЯ: Подошва левого откоса насыпи
                 {-1.000f, 0.000f},   // 2. Левая бровка земполотна (край обочины)
                 {-0.600f, 0.000f},   // 3. Подошва левого внешнего откоса балласта
-                {0.000f,  0.400f},   // 4. Левая бровка призмы 1 пути (Левое плечо)
-                {3.550f,  0.400f},   // 5. Правое плечо призмы 1 пути
-                {4.150f,  0.000f},   // 6. Подошва правого откоса 1 пути (Начало междупутья)
-                {5.275f,  0.000f},   // 7. Подошва левого откоса 2 пути (Конец междупутья)
-                {5.875f,  0.400f},   // 8. Левое плечо призмы 2 пути
-                {9.425f,  0.400f},   // 9. Правое плечо призмы 2 пути
+                {0.000f, 0.400f},   // 4. Левая бровка призмы 1 пути (Левое плечо)
+                {3.550f, 0.400f},   // 5. Правое плечо призмы 1 пути
+                {4.150f, 0.000f},   // 6. Подошва правого откоса 1 пути (Начало междупутья)
+                {5.275f, 0.000f},   // 7. Подошва левого откоса 2 пути (Конец междупутья)
+                {5.875f, 0.400f},   // 8. Левое плечо призмы 2 пути
+                {9.425f, 0.400f},   // 9. Правое плечо призмы 2 пути
                 {10.025f, 0.000f},   // 10. Подошва правого внешнего откоса балласта
                 {10.425f, 0.000f},   // 11. Правая бровка земполотна (край обочины)
                 {16.425f, -4.000f}   // 12. Подошва правого откоса насыпи
@@ -575,14 +577,14 @@ public class Georadar3DViewer extends Application {
             float lineWidth = 0.03f; // Четкая толщина линии 3 см
 
             edgeMesh.getPoints().setAll(
-                    0.0f * this.currentScaleX,       edgeY * this.currentScaleYZ,             -raisedZ * this.currentScaleYZ,
-                    maxLimitX * this.currentScaleX,  edgeY * this.currentScaleYZ,             -raisedZ * this.currentScaleYZ,
-                    0.0f * this.currentScaleX,       (edgeY + lineWidth) * this.currentScaleYZ, -raisedZ * this.currentScaleYZ,
-                    maxLimitX * this.currentScaleX,  (edgeY + lineWidth) * this.currentScaleYZ, -raisedZ * this.currentScaleYZ
+                    0.0f * this.currentScaleX, edgeY * this.currentScaleYZ, -raisedZ * this.currentScaleYZ,
+                    maxLimitX * this.currentScaleX, edgeY * this.currentScaleYZ, -raisedZ * this.currentScaleYZ,
+                    0.0f * this.currentScaleX, (edgeY + lineWidth) * this.currentScaleYZ, -raisedZ * this.currentScaleYZ,
+                    maxLimitX * this.currentScaleX, (edgeY + lineWidth) * this.currentScaleYZ, -raisedZ * this.currentScaleYZ
             );
 
-            edgeMesh.getTexCoords().addAll(0,0);
-            edgeMesh.getFaces().addAll(0,0, 2,0, 1,0,   1,0, 2,0, 3,0);
+            edgeMesh.getTexCoords().addAll(0, 0);
+            edgeMesh.getFaces().addAll(0, 0, 2, 0, 1, 0, 1, 0, 2, 0, 3, 0);
 
             MeshView edgeView = new MeshView(edgeMesh);
             edgeView.setCullFace(javafx.scene.shape.CullFace.NONE);
@@ -598,15 +600,15 @@ public class Georadar3DViewer extends Application {
 
         // Задаем 4 вершины прямоугольника земли вдоль всего перегона
         groundMesh.getPoints().addAll(
-                0.0f * this.currentScaleX,      groundYLeft * this.currentScaleYZ,  -groundZ * this.currentScaleYZ,
-                maxLimitX * this.currentScaleX, groundYLeft * this.currentScaleYZ,  -groundZ * this.currentScaleYZ,
-                0.0f * this.currentScaleX,      groundYRight * this.currentScaleYZ, -groundZ * this.currentScaleYZ,
+                0.0f * this.currentScaleX, groundYLeft * this.currentScaleYZ, -groundZ * this.currentScaleYZ,
+                maxLimitX * this.currentScaleX, groundYLeft * this.currentScaleYZ, -groundZ * this.currentScaleYZ,
+                0.0f * this.currentScaleX, groundYRight * this.currentScaleYZ, -groundZ * this.currentScaleYZ,
                 maxLimitX * this.currentScaleX, groundYRight * this.currentScaleYZ, -groundZ * this.currentScaleYZ
         );
-        groundMesh.getTexCoords().addAll(0,0);
+        groundMesh.getTexCoords().addAll(0, 0);
         // Затягиваем треугольниками (верхнюю и нижнюю стороны плоскости)
         groundMesh.getFaces().addAll(
-                0,0, 2,0, 1,0,   1,0, 2,0, 3,0
+                0, 0, 2, 0, 1, 0, 1, 0, 2, 0, 3, 0
         );
 
         MeshView groundView = new MeshView(groundMesh);
@@ -630,19 +632,19 @@ public class Georadar3DViewer extends Application {
 
         // --- ПРОГРАММНОЕ ДОБАВЛЕНИЕ НЕПРЕРЫВНОГО ТОРЦЕВОГО СЕЧЕНИЯ (ВЕРТИКАЛЬНАЯ КАЙМА) ---
         float[][] crossSectionPoints = {
-                {-7.000f,  -4.000f}, // 1. Левый край основания земли
-                {-1.000f,   0.000f}, // 2. Левая бровка земляного полотна (обочина)
-                {-0.600f,   0.000f}, // 3. Начало левого откоса балластной призмы 1 пути
-                {0.000f,    0.400f}, // 4. Профиль 1: Левое плечо призмы 1 пути
-                {3.550f,    0.400f}, // 5. Конец призмы 1 пути (Правое плечо 1 пути)
-                {4.150f,    0.000f}, // 6. Спуск 1 пути в междупутье
-                {5.275f,    0.000f}, // 7. Ровное междупутье (Начало подъема призмы 2 пути)
-                {5.875f,    0.400f}, // 8. Левое плечо призмы 2 пути
-                {9.425f,    0.400f}, // 9. Профиль 5: Правое плечо призмы 2 пути
-                {10.025f,   0.000f}, // 10. Внешний спуск 2 пути на обочину
-                {10.425f,   0.000f}, // 11. Правая бровка земляного полотна (обочина)
-                {16.425f,  -4.000f}, // 12. Подошва правого откоса насыпи
-                {-7.000f,  -4.000f}  // 13. Замыкаем контур обратно в левую точку земли!
+                {-7.000f, -4.000f}, // 1. Левый край основания земли
+                {-1.000f, 0.000f}, // 2. Левая бровка земляного полотна (обочина)
+                {-0.600f, 0.000f}, // 3. Начало левого откоса балластной призмы 1 пути
+                {0.000f, 0.400f}, // 4. Профиль 1: Левое плечо призмы 1 пути
+                {3.550f, 0.400f}, // 5. Конец призмы 1 пути (Правое плечо 1 пути)
+                {4.150f, 0.000f}, // 6. Спуск 1 пути в междупутье
+                {5.275f, 0.000f}, // 7. Ровное междупутье (Начало подъема призмы 2 пути)
+                {5.875f, 0.400f}, // 8. Левое плечо призмы 2 пути
+                {9.425f, 0.400f}, // 9. Профиль 5: Правое плечо призмы 2 пути
+                {10.025f, 0.000f}, // 10. Внешний спуск 2 пути на обочину
+                {10.425f, 0.000f}, // 11. Правая бровка земляного полотна (обочина)
+                {16.425f, -4.000f}, // 12. Подошва правого откоса насыпи
+                {-7.000f, -4.000f}  // 13. Замыкаем контур обратно в левую точку земли!
         };
 
         float endX = maxLimitX * this.currentScaleX;
@@ -659,8 +661,8 @@ public class Georadar3DViewer extends Application {
             // чтобы полностью исключить наложение плоскостей (Z-fighting)!
             float frontX1 = 0.000f - 0.015f;
             float frontX2 = 0.000f - 0.015f;
-            float backX1  = endX + 0.015f;
-            float backX2  = endX + 0.015f;
+            float backX1 = endX + 0.015f;
+            float backX2 = endX + 0.015f;
 
             // 1. КОНТУР НА ПЕРЕДНЕМ ТОРЦЕ (Толщина уходит вниз по оси Z!)
             TriangleMesh frontEdgeMesh = new TriangleMesh();
@@ -670,8 +672,8 @@ public class Georadar3DViewer extends Application {
                     frontX1, y2 * this.currentScaleYZ, -z2 * this.currentScaleYZ,
                     frontX2, y2 * this.currentScaleYZ, -(z2 - lineWidthEdge) * this.currentScaleYZ
             );
-            frontEdgeMesh.getTexCoords().addAll(0,0);
-            frontEdgeMesh.getFaces().addAll(0,0, 2,0, 1,0,   1,0, 2,0, 3,0);
+            frontEdgeMesh.getTexCoords().addAll(0, 0);
+            frontEdgeMesh.getFaces().addAll(0, 0, 2, 0, 1, 0, 1, 0, 2, 0, 3, 0);
 
             MeshView frontEdgeView = new MeshView(frontEdgeMesh);
             frontEdgeView.setCullFace(javafx.scene.shape.CullFace.NONE);
@@ -686,8 +688,8 @@ public class Georadar3DViewer extends Application {
                     backX1, y2 * this.currentScaleYZ, -z2 * this.currentScaleYZ,
                     backX2, y2 * this.currentScaleYZ, -(z2 - lineWidthEdge) * this.currentScaleYZ
             );
-            backEdgeMesh.getTexCoords().addAll(0,0);
-            backEdgeMesh.getFaces().addAll(0,0, 2,0, 1,0,   1,0, 2,0, 3,0);
+            backEdgeMesh.getTexCoords().addAll(0, 0);
+            backEdgeMesh.getFaces().addAll(0, 0, 2, 0, 1, 0, 1, 0, 2, 0, 3, 0);
 
             MeshView backEdgeView = new MeshView(backEdgeMesh);
             backEdgeView.setCullFace(javafx.scene.shape.CullFace.NONE);
@@ -700,8 +702,8 @@ public class Georadar3DViewer extends Application {
         int stepMeters = 20;     // Шаг меток - каждые 20 метров
 
         // Координаты Y для засечек и подписей на левой и правой обочинах
-        float leftBermY   = -1.000f;
-        float rightBermY  = 10.425f;
+        float leftBermY = -1.000f;
+        float rightBermY = 10.425f;
 
         for (int meter = 0; meter <= maxLimitX; meter += stepMeters) {
             float screenX = meter * this.currentScaleX;
@@ -770,57 +772,51 @@ public class Georadar3DViewer extends Application {
     }
 
     private float getProjectHeight(float y) {
-        float hBallastTop   = 0.40f;
+        float hBallastTop = 0.40f;
         float hSubgradeZero = 0.0f;
-        float hGroundLevel  = -4.0f;
+        float hGroundLevel = -4.0f;
 
-        float leftEmbankmentBottom  = -7.000f;
-        float leftBermStart         = -1.000f;
+        float leftEmbankmentBottom = -7.000f;
+        float leftBermStart = -1.000f;
         float leftBallastSlopeStart = -0.600f;
 
-        float leftShoulderTrack1    = 0.000f;
-        float rightShoulderTrack1   = 3.550f;
-        float leftBallastSlopeEnd   = 4.150f;
+        float leftShoulderTrack1 = 0.000f;
+        float rightShoulderTrack1 = 3.550f;
+        float leftBallastSlopeEnd = 4.150f;
 
-        float rightBallastSlopeStart= 5.275f;
-        float leftShoulderTrack2    = 5.875f;
-        float rightShoulderTrack2   = 9.425f;
+        float rightBallastSlopeStart = 5.275f;
+        float leftShoulderTrack2 = 5.875f;
+        float rightShoulderTrack2 = 9.425f;
 
-        float rightBallastSlopeEnd  = 10.025f;
-        float rightBermEnd          = 10.425f;
+        float rightBallastSlopeEnd = 10.025f;
+        float rightBermEnd = 10.425f;
         float rightEmbankmentBottom = 16.425f;
 
         if (y < leftEmbankmentBottom) return hGroundLevel;
         else if (y >= leftEmbankmentBottom && y < leftBermStart) {
             float ratio = (y - leftEmbankmentBottom) / (leftBermStart - leftEmbankmentBottom);
             return hGroundLevel + ratio * (hSubgradeZero - hGroundLevel);
-        }
-        else if (y >= leftBermStart && y < leftBallastSlopeStart) return hSubgradeZero;
+        } else if (y >= leftBermStart && y < leftBallastSlopeStart) return hSubgradeZero;
         else if (y >= leftBallastSlopeStart && y < leftShoulderTrack1) {
             float ratio = (y - leftBallastSlopeStart) / (leftShoulderTrack1 - leftBallastSlopeStart);
             return hSubgradeZero + ratio * (hBallastTop - hSubgradeZero);
-        }
-        else if (y >= leftShoulderTrack1 && y < rightShoulderTrack1) return hBallastTop;
+        } else if (y >= leftShoulderTrack1 && y < rightShoulderTrack1) return hBallastTop;
         else if (y >= rightShoulderTrack1 && y < leftBallastSlopeEnd) {
             float ratio = (y - rightShoulderTrack1) / (leftBallastSlopeEnd - rightShoulderTrack1);
             return hBallastTop + ratio * (hSubgradeZero - hBallastTop);
-        }
-        else if (y >= leftBallastSlopeEnd && y < rightBallastSlopeStart) return hSubgradeZero;
+        } else if (y >= leftBallastSlopeEnd && y < rightBallastSlopeStart) return hSubgradeZero;
         else if (y >= rightBallastSlopeStart && y < leftShoulderTrack2) {
             float ratio = (y - rightBallastSlopeStart) / (leftShoulderTrack2 - rightBallastSlopeStart);
             return hSubgradeZero + ratio * (hBallastTop - hSubgradeZero);
-        }
-        else if (y >= leftShoulderTrack2 && y < rightShoulderTrack2) return hBallastTop;
+        } else if (y >= leftShoulderTrack2 && y < rightShoulderTrack2) return hBallastTop;
         else if (y >= rightShoulderTrack2 && y < rightBallastSlopeEnd) {
             float ratio = (y - rightShoulderTrack2) / (rightBallastSlopeEnd - rightShoulderTrack2);
             return hBallastTop + ratio * (hSubgradeZero - hBallastTop);
-        }
-        else if (y >= rightBallastSlopeEnd && y < rightBermEnd) return hSubgradeZero;
+        } else if (y >= rightBallastSlopeEnd && y < rightBermEnd) return hSubgradeZero;
         else if (y >= rightBermEnd && y < rightEmbankmentBottom) {
             float ratio = (y - rightBermEnd) / (rightEmbankmentBottom - rightBermEnd);
             return hSubgradeZero + ratio * (hGroundLevel - hSubgradeZero);
-        }
-        else return hGroundLevel;
+        } else return hGroundLevel;
     }
 
     private float getInterpolatedZ(List<LayerPoint> points, float targetX) {
@@ -924,9 +920,9 @@ public class Georadar3DViewer extends Application {
         // 5. ОТРЕСОВКА ШПАЛЬНЫХ БРУСЬЕВ НА СРЕЗЕ
         float[][] trackSleeperBounds = {{0.400f, 3.150f}, {6.275f, 9.025f}};
         for (float[] bounds : trackSleeperBounds) {
-            double sLeft   = mapY.apply(bounds[0]);
-            double sRight  = mapY.apply(bounds[1]);
-            double sTop    = mapZ.apply(0.60f);
+            double sLeft = mapY.apply(bounds[0]);
+            double sRight = mapY.apply(bounds[1]);
+            double sTop = mapZ.apply(0.60f);
             double sBottom = mapZ.apply(0.40f);
 
             javafx.scene.shape.Rectangle sleeperRect = new javafx.scene.shape.Rectangle(sLeft, sTop, (sRight - sLeft), (sBottom - sTop));
@@ -938,9 +934,9 @@ public class Georadar3DViewer extends Application {
         // 6. ОТРЕСОВКА РЕЛЬСОВЫХ НИТЕЙ НА СРЕЗЕ
         float[] railYCoordinates = {1.775f - 0.76f, 1.775f + 0.76f, 7.650f - 0.76f, 7.650f + 0.76f};
         for (float railY : railYCoordinates) {
-            double rLeft   = mapY.apply(railY - 0.075f);
-            double rRight  = mapY.apply(railY + 0.075f);
-            double rTop    = mapZ.apply(0.78f);
+            double rLeft = mapY.apply(railY - 0.075f);
+            double rRight = mapY.apply(railY + 0.075f);
+            double rTop = mapZ.apply(0.78f);
             double rBottom = mapZ.apply(0.60f);
 
             javafx.scene.shape.Rectangle railRect = new javafx.scene.shape.Rectangle(rLeft, rTop, (rRight - rLeft), (rBottom - rTop));
@@ -980,20 +976,20 @@ public class Georadar3DViewer extends Application {
             }
         }
 
-        // --- 9. ЦИФРОВАЯ ВЕДОМОСТЬ ВЫСОТНЫХ ОТМЕТОК СЛОЕВ (3 СЛОЯ И РАСЧЕТНАЯ УВЯЗКА) ---
-        double startTableX = 660.0; // Сдвигаем на 660px, чтобы влезла третья колонка
+        // --- 9. ЦИФРОВАЯ ВЕДОМОСТЬ ОТНОСИТЕЛЬНЫХ ГЛУБИН СЛОЕВ (ОТСЧЕТ ОТ ДНЕВНОЙ ПОВЕРХНОСТИ) ---
+        double startTableX = 660.0;
         double startTableY = 120.0;
-        double rowHeight   = 24.0;
+        double rowHeight = 24.0;
         int currentRow = 0;
 
-        Label tableTitle = new Label("📊 Ведомость отметок слоёв (Z, м):");
+        // Изменили заголовок, чтобы инженер сразу видел суть
+        Label tableTitle = new Label("Ведомость глубин залегания слоёв (м):");
         tableTitle.setStyle("-fx-font-weight: bold; -fx-text-fill: #333333; -fx-font-size: 14px;");
         tableTitle.setTranslateX(startTableX);
         tableTitle.setTranslateY(startTableY + (currentRow++ * rowHeight));
         crossSectionCanvas2D.getChildren().add(tableTitle);
 
-        // СТАЛО: Шапка расширена до 3-х колонок (Дневная, Щебень, Водоупор)
-        Label tableHeader = new Label(String.format("%-18s | %-7s | %-7s | %-8s", "Профиль (Y, м)", "Слой 1", "Слой 2", "Водоупор"));
+        Label tableHeader = new Label(String.format("%-18s | %-7s | %-7s | %-8s", "Профиль (Y, м)", "Поверх.", "Слой 2", "Слой 3"));
         tableHeader.setStyle("-fx-font-family: 'Courier New'; -fx-font-weight: bold; -fx-text-fill: #666666; -fx-font-size: 14px;");
         tableHeader.setTranslateX(startTableX);
         tableHeader.setTranslateY(startTableY + (currentRow++ * rowHeight));
@@ -1005,71 +1001,87 @@ public class Georadar3DViewer extends Application {
         separator.setTranslateY(startTableY + (currentRow++ * rowHeight));
         crossSectionCanvas2D.getChildren().add(separator);
 
+
         for (RadarProfile p : sortedProfiles) {
             float yOffset = p.getLateralOffset();
             String profileName = String.format("Y = %-6.3f", yOffset);
 
-            if (Math.abs(yOffset - 0.000f) < 0.05f)  profileName = "Лев. плечо (0.00)";
+            if (Math.abs(yOffset - 0.000f) < 0.05f) profileName = "Лев. плечо (0.00)";
             else if (Math.abs(yOffset - 1.775f) < 0.05f) profileName = "Ось 1 пути (1.77)";
             else if (Math.abs(yOffset - 4.7125f) < 0.05f) profileName = "Междупутье (4.71)";
-            else if (Math.abs(yOffset - 7.650f) < 0.05f)  profileName = "Ось 2 пути (7.65)";
-            else if (Math.abs(yOffset - 9.425f) < 0.05f)  profileName = "Прав. плечо (9.42)";
+            else if (Math.abs(yOffset - 7.650f) < 0.05f) profileName = "Ось 2 пути (7.65)";
+            else if (Math.abs(yOffset - 9.425f) < 0.05f) profileName = "Прав. плечо (9.42)";
 
             List<LayerPoint> allPoints = p.getPoints() != null ? new ArrayList<>(p.getPoints()) : new ArrayList<>();
 
-            // 1. Сбор точек для Первого слоя (Дневная поверхность)
+            // 1. Извлекаем абсолютную Z-отметку Слоя 1 (Дневная поверхность) для расчета дельты
             List<LayerPoint> l1Pts = new ArrayList<>();
             for (LayerPoint pt : allPoints) {
                 String name = pt.getLayerName().toLowerCase().trim();
-                if (name.contains("слой 1") || name.contains("слой1") || name.contains("layer 1") || name.contains("layer1") || name.contains("cлой 1")) l1Pts.add(pt);
-            }
-            String z1Str = "  н/д  ";
-            if (!l1Pts.isEmpty()) {
-                l1Pts.sort(Comparator.comparing(LayerPoint::getDistanceX));
-                z1Str = String.format("%-7.2f", getInterpolatedZ(l1Pts, meterX));
+                if (name.contains("слой 1") || name.contains("слой1") || name.contains("layer 1") || name.contains("layer1") || name.contains("cлой 1"))
+                    l1Pts.add(pt);
             }
 
-            // 2. Сбор точек для Второго слоя (Щебёночная призма)
+            float zSurface = Float.MIN_VALUE;
+            String z1Str = "  0.00 "; // Поверхность теперь всегда ноль отсчета!
+
+            if (!l1Pts.isEmpty()) {
+                l1Pts.sort(Comparator.comparing(LayerPoint::getDistanceX));
+                zSurface = getInterpolatedZ(l1Pts, meterX);
+            } else {
+                z1Str = "  н/д  "; // Если даже дневная поверхность не отсканирована
+            }
+
+            // 2. Сбор и относительный пересчет для Слоя 2 (Щебень)
             List<LayerPoint> l2Pts = new ArrayList<>();
             for (LayerPoint pt : allPoints) {
                 String name = pt.getLayerName().toLowerCase().trim();
-                if (name.contains("слой 2") || name.contains("слой2") || name.contains("layer 2") || name.contains("layer2") || name.contains("cлой 2")) l2Pts.add(pt);
+                if (name.contains("слой 2") || name.contains("слой2") || name.contains("layer 2") || name.contains("layer2") || name.contains("cлой 2"))
+                    l2Pts.add(pt);
             }
             String z2Str = "  н/д  ";
-            if (!l2Pts.isEmpty()) {
+            if (!l2Pts.isEmpty() && zSurface != Float.MIN_VALUE) {
                 l2Pts.sort(Comparator.comparing(LayerPoint::getDistanceX));
-                z2Str = String.format("%-7.2f", getInterpolatedZ(l2Pts, meterX));
+                float absZ2 = getInterpolatedZ(l2Pts, meterX);
+                float relativeDepth2 = zSurface - absZ2; // Считаем чистую глубину вниз
+                z2Str = String.format("%-7.2f", relativeDepth2);
             }
 
-            // 3. Сбор точек для Третьего слоя (Водоупорная глина) с автоувязкой пустой оси АБ-700 по уклонам чертежа
+            // 3. Сбор и относительный пересчет для Слоя 3 (Водоупор) с поддержкой интерполяции осей
             List<LayerPoint> l3Pts = new ArrayList<>();
             for (LayerPoint pt : allPoints) {
                 String name = pt.getLayerName().toLowerCase().trim();
-                if (name.contains("слой 3") || name.contains("слой3") || name.contains("layer 3") || name.contains("layer3") || name.contains("cлой 3")) l3Pts.add(pt);
+                if (name.contains("слой 3") || name.contains("слой3") || name.contains("layer 3") || name.contains("layer3") || name.contains("cлой 3"))
+                    l3Pts.add(pt);
             }
 
-            String z3Str;
-            if (!l3Pts.isEmpty()) {
-                l3Pts.sort(Comparator.comparing(LayerPoint::getDistanceX));
-                z3Str = String.format("%-7.2f", getInterpolatedZ(l3Pts, meterX));
-            } else {
-                // Если АБ-700 не добила до глины, вычисляем точку пересечения ломаной линии чертежа под рельсами
-                float zLeft  = getBermLayer3Z(section, 0.000f, meterX);
-                float zMid   = getBermLayer3Z(section, 4.7125f, meterX);
-                float zRight = getBermLayer3Z(section, 9.425f, meterX);
-
-                if (Math.abs(yOffset - 1.775f) < 0.05f && zLeft != Float.MIN_VALUE && zMid != Float.MIN_VALUE) {
-                    float zCalc1 = zLeft + (zMid - zLeft) * 0.37666f;
-                    z3Str = String.format("%-5.2f*", zCalc1); // Расчётный маркер увязки по уклону призмы
-                } else if (Math.abs(yOffset - 7.650f) < 0.05f && zMid != Float.MIN_VALUE && zRight != Float.MIN_VALUE) {
-                    float zCalc2 = zMid + (zRight - zMid) * 0.62333f;
-                    z3Str = String.format("%-5.2f*", zCalc2);
+            String z3Str = "  н/д  ";
+            if (zSurface != Float.MIN_VALUE) {
+                if (!l3Pts.isEmpty()) {
+                    l3Pts.sort(Comparator.comparing(LayerPoint::getDistanceX));
+                    float absZ3 = getInterpolatedZ(l3Pts, meterX);
+                    z3Str = String.format("%-7.2f", (zSurface - absZ3));
                 } else {
-                    z3Str = "  н/д  ";
+                    // Если на оси пусто, берем интерполированную абсолютную Z чертежа
+                    float zLeft = getBermLayer3Z(section, 0.000f, meterX);
+                    float zMid = getBermLayer3Z(section, 4.7125f, meterX);
+                    float zRight = getBermLayer3Z(section, 9.425f, meterX);
+                    float absZ3Calc = Float.MIN_VALUE;
+
+                    if (Math.abs(yOffset - 1.775f) < 0.05f && zLeft != Float.MIN_VALUE && zMid != Float.MIN_VALUE) {
+                        absZ3Calc = zLeft + (zMid - zLeft) * 0.37666f;
+                    } else if (Math.abs(yOffset - 7.650f) < 0.05f && zMid != Float.MIN_VALUE && zRight != Float.MIN_VALUE) {
+                        absZ3Calc = zMid + (zRight - zMid) * 0.62333f;
+                    }
+
+                    if (absZ3Calc != Float.MIN_VALUE) {
+                        float relativeDepth3Calc = zSurface - absZ3Calc;
+                        z3Str = String.format("%-5.2f*", relativeDepth3Calc);
+                    }
                 }
             }
 
-            // Выводим строчки ведомости (Формат расширен до 3-х колонок)
+            // Выводим строчки на холст напрямую
             Label rowLabel = new Label(String.format("%-18s | %-7s | %-7s | %-8s", profileName, z1Str, z2Str, z3Str));
             rowLabel.setStyle("-fx-font-family: 'Courier New'; -fx-text-fill: #444444; -fx-font-size: 14px;");
             rowLabel.setTranslateX(startTableX);
@@ -1089,7 +1101,8 @@ public class Georadar3DViewer extends Application {
             List<LayerPoint> pts = new ArrayList<>();
             for (LayerPoint pt : pOpt.get().getPoints()) {
                 String name = pt.getLayerName().toLowerCase().trim();
-                if (name.contains("слой 3") || name.contains("слой3") || name.contains("layer 3") || name.contains("cлой 3")) pts.add(pt);
+                if (name.contains("слой 3") || name.contains("слой3") || name.contains("layer 3") || name.contains("cлой 3"))
+                    pts.add(pt);
             }
             if (!pts.isEmpty()) {
                 pts.sort(Comparator.comparing(LayerPoint::getDistanceX));
@@ -1099,4 +1112,3 @@ public class Georadar3DViewer extends Application {
         return Float.MIN_VALUE;
     }
 }
-
