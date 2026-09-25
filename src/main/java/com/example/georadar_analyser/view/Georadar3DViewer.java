@@ -944,6 +944,35 @@ public class Georadar3DViewer extends Application {
             crossSectionCanvas2D.getChildren().add(railRect);
         }
 
+        // --- 6.1. ОТРЕСОВКА ШТРИХ-ПУНКТИРНЫХ CAD-ОСЕЙ 1-ГО И 2-ГО ПУТЕЙ ---
+        float[] trackAxisYCoordinates = {1.775f, 7.650f};
+        float topZAxis = 0.780f;   // Уровень головки рельса
+        float bottomZAxis = -4.000f; // Уровень основания земли
+
+        for (float axisY : trackAxisYCoordinates) {
+            // Переводим метры реальности в пиксели экрана через наши CAD-функции
+            double screenX = mapY.apply(axisY);
+            double screenYTop = mapZ.apply(topZAxis);
+            double screenYBottom = mapZ.apply(bottomZAxis);
+
+            javafx.scene.shape.Line axisLine = new javafx.scene.shape.Line(screenX, screenYTop, screenX, screenYBottom);
+            axisLine.setStroke(Color.rgb(70, 90, 140)); // Благородный темно-синий цвет осей
+            axisLine.setStrokeWidth(1.0); // Тонкая инженерная линия
+
+            // Паттерн ГОСТ штрих-пунктира: штрих (12px), пропуск (5px), пункт/точка (2px), пропуск (5px)
+            axisLine.getStrokeDashArray().addAll(12.0, 5.0, 2.0, 5.0);
+
+            crossSectionCanvas2D.getChildren().add(axisLine);
+
+            // Добавим аккуратные подписи "Ось 1" и "Ось 2" в самом низу под осями
+            String axisName = (Math.abs(axisY - 1.775f) < 0.05f) ? "Ось 1" : "Ось 2";
+            Label axisLabel = new Label(axisName);
+            axisLabel.setStyle("-fx-font-family: 'Arial'; -fx-font-size: 11px; -fx-text-fill: #465A8C; -fx-font-weight: bold;");
+            axisLabel.setTranslateX(screenX - 15); // Центрируем текст по оси
+            axisLabel.setTranslateY(screenYBottom + 5); // Смещаем чуть ниже линии земли
+            crossSectionCanvas2D.getChildren().add(axisLabel);
+        }
+        
         // 7. ИНТЕРПОЛЯЦИЯ И ОТРИСОВКА ГЕОРАДАРНЫХ СЛОЕВ ГРУНТА ИЗ БАЗЫ
         Map<String, Color> layerColors = Map.of("слой 2", Color.GOLD, "слой 3", Color.SADDLEBROWN);
         List<RadarProfile> sortedProfiles = new ArrayList<>(section.getProfiles());
