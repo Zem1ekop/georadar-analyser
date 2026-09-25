@@ -885,7 +885,7 @@ public class Georadar3DViewer extends Application {
 
         // 2. КОМПАКТНЫЕ НАСТРОЙКИ МАСШТАБИРОВАНИЯ (Сдвиг влево на 30 пикселей)
         float scale = 25.0f;
-        float offsetX = 30.0f;
+        float offsetX = 70.0f;
         float centerY = 180.0f;
 
         java.util.function.Function<Float, Double> mapY = y -> (double) (offsetX + (y + 7.0f) * scale);
@@ -895,9 +895,48 @@ public class Georadar3DViewer extends Application {
         int absoluteMeter = (int) Math.round(meterX + this.startLocationX);
         Label infoLabel = new Label(String.format("Поперечный профиль на отметке: %d м (локальный X = %.2f м)", absoluteMeter, meterX));
         infoLabel.setStyle("-fx-font-weight: bold; -fx-font-size: 14px; -fx-text-fill: #0066CC;");
-        infoLabel.setTranslateX(30);
+        infoLabel.setTranslateX(70);
         infoLabel.setTranslateY(15);
         crossSectionCanvas2D.getChildren().add(infoLabel);
+
+        // --- 3.1. ОТРИСОВКА ВЕРТИКАЛЬНОЙ МЕРНОЙ ШКАЛЫ И ГОРИЗОНТАЛЬНОЙ СЕТКИ ВЫСОТ ---
+        double startScaleX = 65.0; // Координата X для вертикальной оси шкалы
+        double endGridX = 710.0;   // Длина линий сетки направо (до начала таблицы)
+
+        // Бежим циклом от -4.0м до +1.0м с шагом 0.5 метра
+        for (float zVal = -4.0f; zVal <= 1.05f; zVal += 0.5f) {
+            double screenY = mapZ.apply(zVal);
+
+            // 1. Рисуем тонкую горизонтальную линию сетки (background grid)
+            javafx.scene.shape.Line gridLine = new javafx.scene.shape.Line(startScaleX, screenY, endGridX, screenY);
+            gridLine.setStroke(Color.rgb(230, 230, 230)); // Очень мягкий серый цвет сетки
+            gridLine.setStrokeWidth(0.8);
+            if (Math.abs(zVal - 0.0f) < 0.01f) {
+                gridLine.setStroke(Color.rgb(200, 200, 200)); // Выделяем проектный ноль (бровку) чуть темнее
+                gridLine.setStrokeWidth(1.2);
+            }
+            crossSectionCanvas2D.getChildren().add(gridLine);
+
+            // 2. Рисуем засечки на самой шкале
+            javafx.scene.shape.Line tick = new javafx.scene.shape.Line(startScaleX - 4, screenY, startScaleX, screenY);
+            tick.setStroke(Color.rgb(120, 120, 120));
+            tick.setStrokeWidth(1.0);
+            crossSectionCanvas2D.getChildren().add(tick);
+
+            // 3. Выводим текст числовой отметки в метрах
+            Label textLabel = new Label(String.format("%+.1f", zVal));
+            textLabel.setStyle("-fx-font-family: 'Arial'; -fx-font-size: 11px; -fx-text-fill: #666666;");
+            textLabel.setTranslateX(startScaleX - 35); // Сдвигаем цифры левее шкалы
+            textLabel.setTranslateY(screenY - 7);       // Центрируем текст по вертикали засечки
+            crossSectionCanvas2D.getChildren().add(textLabel);
+        }
+
+        // Рисуем саму вертикальную осевую нить линейки
+        javafx.scene.shape.Line mainScaleLine = new javafx.scene.shape.Line(startScaleX, mapZ.apply(1.0f), startScaleX, mapZ.apply(-4.0f));
+        mainScaleLine.setStroke(Color.rgb(120, 120, 120));
+        mainScaleLine.setStrokeWidth(1.2);
+        crossSectionCanvas2D.getChildren().add(mainScaleLine);
+
 
         // 4. ОТРЕСОВКА ОЧЕРТАНИЙ НАСЫПИ И ЗЕМЛЯНОГО ПОЛОТНА (Серый контур)
         float[] projectYGrid = {-7.0f, -1.0f, -0.6f, 0.0f, 1.775f, 3.55f, 4.15f, 4.7f, 5.275f, 5.875f, 7.65f, 9.425f, 10.025f, 10.425f, 16.425f};
@@ -972,7 +1011,7 @@ public class Georadar3DViewer extends Application {
             axisLabel.setTranslateY(screenYBottom + 5); // Смещаем чуть ниже линии земли
             crossSectionCanvas2D.getChildren().add(axisLabel);
         }
-        
+
         // 7. ИНТЕРПОЛЯЦИЯ И ОТРИСОВКА ГЕОРАДАРНЫХ СЛОЕВ ГРУНТА ИЗ БАЗЫ
         Map<String, Color> layerColors = Map.of("слой 2", Color.GOLD, "слой 3", Color.SADDLEBROWN);
         List<RadarProfile> sortedProfiles = new ArrayList<>(section.getProfiles());
@@ -1006,7 +1045,7 @@ public class Georadar3DViewer extends Application {
         }
 
         // --- 9. ЦИФРОВАЯ ВЕДОМОСТЬ ОТНОСИТЕЛЬНЫХ ГЛУБИН СЛОЕВ (ОТСЧЕТ ОТ ДНЕВНОЙ ПОВЕРХНОСТИ) ---
-        double startTableX = 660.0;
+        double startTableX = 740.0;
         double startTableY = 120.0;
         double rowHeight = 24.0;
         int currentRow = 0;
