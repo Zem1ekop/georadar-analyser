@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  georadar-db:
+    image: postgres:15-alpine
+    container_name: georadar_postgres_container
+    environment:
+      POSTGRES_DB: georadar_storage
+      POSTGRES_USER: rail_engineer
+      POSTGRES_PASSWORD: TechPassword2026
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_cad_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+volumes:
+  postgres_cad_data:
