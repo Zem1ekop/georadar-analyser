@@ -11,7 +11,8 @@ import lombok.Setter;
 public class RadarProfile {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "radar_profiles_seq")
+    @SequenceGenerator(name = "radar_profiles_seq", sequenceName = "radar_profiles_id_seq", allocationSize = 50)
     private Long id;
 
     @Column(name = "profile_name", nullable = false)

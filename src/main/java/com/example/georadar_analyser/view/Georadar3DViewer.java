@@ -320,7 +320,7 @@ public class Georadar3DViewer extends Application {
     private void rebuild3DModel(Long sectionId) {
         Georadar3DViewer.modelGroup.getChildren().clear();
 
-        Optional<TrackSection> sectionOpt = Georadar3DViewer.sectionRepository.findByIdWithWithAllData(sectionId);
+        Optional<TrackSection> sectionOpt = Georadar3DViewer.sectionRepository.findById(sectionId);
         if (sectionOpt.isEmpty()) return;
         TrackSection section = sectionOpt.get();
 
@@ -839,9 +839,6 @@ public class Georadar3DViewer extends Application {
     }
 
     /**
-     * ПОЛНОЦЕННЫЙ 2D CAD-ЧЕРТЕЖ ПОПЕРЕЧНОГО СЕЧЕНИЯ НАСЫПИ И ВСП
-     */
-    /**
      * ПОЛНОЦЕННЫЙ 2D CAD-ЧЕРТЕЖ ПОПЕРЕЧНОГО СЕЧЕНИЯ НАСЫПИ И ТАБЛИЦА СЛОЕВ
      */
     private void drawCrossSection2D(float meterX) {
@@ -851,7 +848,7 @@ public class Georadar3DViewer extends Application {
         crossSectionCanvas2D.getChildren().clear();
 
         // Подгружаем данные участка из репозитория
-        Optional<TrackSection> sectionOpt = Georadar3DViewer.sectionRepository.findByIdWithWithAllData(Georadar3DViewer.targetSectionId);
+        Optional<TrackSection> sectionOpt = Georadar3DViewer.sectionRepository.findById(Georadar3DViewer.targetSectionId);
         if (sectionOpt.isEmpty()) return;
         TrackSection section = sectionOpt.get();
 

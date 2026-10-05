@@ -15,7 +15,12 @@ import lombok.Setter;
 public class LayerPoint {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "layer_points_seq")
+    @SequenceGenerator(
+            name = "layer_points_seq",
+            sequenceName = "layer_points_id_seq",
+            allocationSize = 1000 // Выделяем сразу 1000 ID в память Java для сверхбыстрого импорта
+    )
     private Long id;
 
     @Column(name = "distance_x", nullable = false)

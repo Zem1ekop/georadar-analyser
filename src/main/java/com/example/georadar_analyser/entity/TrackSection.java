@@ -11,8 +11,9 @@ import java.time.LocalDate;
 @Setter // Автоматически создает сеттеры (благодаря библиотеке Lombok)
 public class TrackSection {
 
-    @Id // Указывает, что это первичный ключ (уникальный ID строки)
-    @GeneratedValue(strategy = GenerationType.IDENTITY) // Включает автонумерацию (1, 2, 3...)
+    @Id
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "track_sections_seq")
+    @SequenceGenerator(name = "track_sections_seq", sequenceName = "track_sections_id_seq", allocationSize = 1)
     private Long id;
 
     @Column(name = "line_name", nullable = false)

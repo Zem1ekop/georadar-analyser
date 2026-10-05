@@ -12,23 +12,13 @@
     <artifactId>analyser</artifactId>
     <version>0.0.1-SNAPSHOT</version>
     <name>georadar-analyser</name>
-    <description>Spring Boot project</description>
-    <url/>
-    <licenses>
-        <license/>
-    </licenses>
-    <developers>
-        <developer/>
-    </developers>
-    <scm>
-        <connection/>
-        <developerConnection/>
-        <tag/>
-        <url/>
-    </scm>
+    <description>Spring Boot project for Rail Georadar Analysis</description>
+
     <properties>
         <java.version>17</java.version>
+        <javafx.version>17.0.10</javafx.version>
     </properties>
+
     <dependencies>
         <!-- Веб-сервер и REST API -->
         <dependency>
@@ -42,14 +32,7 @@
             <artifactId>spring-boot-starter-data-jpa</artifactId>
         </dependency>
 
-        <!-- Встроенная база данных H2 -->
-        <dependency>
-            <groupId>com.h2database</groupId>
-            <artifactId>h2</artifactId>
-            <scope>runtime</scope>
-        </dependency>
-
-        <!-- Промышленный драйвер СУБД PostgreSQL -->
+        <!-- Промышленный драйвер СУБД PostgreSQL (Оставляем основным) -->
         <dependency>
             <groupId>org.postgresql</groupId>
             <artifactId>postgresql</artifactId>
@@ -70,18 +53,18 @@
             <version>5.2.5</version>
         </dependency>
 
-        <!-- JavaFX Графика (Ядро) -->
+        <!-- JavaFX Графика (Ядро элементов управления) -->
         <dependency>
             <groupId>org.openjfx</groupId>
             <artifactId>javafx-controls</artifactId>
-            <version>17.0.10</version>
+            <version>${javafx.version}</version>
         </dependency>
 
-        <!-- JavaFX 3D Модуль (Отрисовка поверхностей) -->
+        <!-- JavaFX 3D & Graphics Модуль (КРИТИЧНО ДЛЯ TriangleMesh, Камеры и CAD-рендеринга) -->
         <dependency>
             <groupId>org.openjfx</groupId>
-            <artifactId>javafx-fxml</artifactId>
-            <version>17.0.10</version>
+            <artifactId>javafx-graphics</artifactId>
+            <version>${javafx.version}</version>
         </dependency>
 
         <!-- Тестирование -->
@@ -92,14 +75,20 @@
         </dependency>
     </dependencies>
 
-
     <build>
         <plugins>
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <excludes>
+                        <exclude>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                        </exclude>
+                    </excludes>
+                </configuration>
             </plugin>
         </plugins>
     </build>
-
 </project>
