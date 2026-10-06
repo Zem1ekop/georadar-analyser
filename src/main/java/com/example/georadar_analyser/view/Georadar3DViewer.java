@@ -784,6 +784,10 @@ public class Georadar3DViewer extends Application {
         float leftBermY = -1.000f;
         float rightBermY = 10.425f;
 
+        // Список для накопления рисок и текста, чтобы вывести их поверх прозрачной насыпи
+        List<MeshView> piquetTickNodes = new ArrayList<>();
+        List<Text> piquetTextNodes = new ArrayList<>();
+
         for (int meter = 0; meter <= maxLimitX; meter += stepMeters) {
             float screenX = meter * this.currentScaleX;
 
@@ -801,7 +805,8 @@ public class Georadar3DViewer extends Application {
             MeshView leftTickView = new MeshView(leftTick);
             leftTickView.setCullFace(javafx.scene.shape.CullFace.NONE);
             leftTickView.setMaterial(edgeMat); // СТАЛО: мягкий серый вместо черного вырвиглазного
-            Georadar3DViewer.modelGroup.getChildren().add(leftTickView);
+            //Georadar3DViewer.modelGroup.getChildren().add(leftTickView);
+            piquetTickNodes.add(leftTickView);
 
             // Вертикальные маркеры-флажки слева
             //Text leftText = new Text(String.valueOf(meter));
@@ -816,7 +821,8 @@ public class Georadar3DViewer extends Application {
 
             javafx.scene.transform.Rotate standVerticalLeft = new javafx.scene.transform.Rotate(90, javafx.scene.transform.Rotate.Z_AXIS);
             leftText.getTransforms().addAll(standVerticalLeft);
-            Georadar3DViewer.modelGroup.getChildren().add(leftText);
+            //Georadar3DViewer.modelGroup.getChildren().add(leftText);
+            piquetTextNodes.add(leftText);
 
 
             // --- 2. ОРИЕНТАЦИЯ ПРАВОЙ СТОРОНЫ ---
@@ -833,7 +839,8 @@ public class Georadar3DViewer extends Application {
             MeshView rightTickView = new MeshView(rightTick);
             rightTickView.setCullFace(javafx.scene.shape.CullFace.NONE);
             rightTickView.setMaterial(edgeMat); // СТАЛО: мягкий серый вместо черного
-            Georadar3DViewer.modelGroup.getChildren().add(rightTickView);
+            //Georadar3DViewer.modelGroup.getChildren().add(rightTickView);
+            piquetTickNodes.add(rightTickView);
 
             // Вертикальные маркеры-флажки справа
             //Text rightText = new Text(String.valueOf(meter));
@@ -846,10 +853,22 @@ public class Georadar3DViewer extends Application {
 
             javafx.scene.transform.Rotate standVerticalRight = new javafx.scene.transform.Rotate(90, javafx.scene.transform.Rotate.Z_AXIS);
             rightText.getTransforms().addAll(standVerticalRight);
-            Georadar3DViewer.modelGroup.getChildren().add(rightText);
+            //Georadar3DViewer.modelGroup.getChildren().add(rightText);
+            piquetTextNodes.add(rightText);
         }
 
+        // --- Добавляем проектную насыпь поверх внутренних слоев ---
         Georadar3DViewer.modelGroup.getChildren().add(meshViewProj);
+
+        // --- ИНЖЕНЕРНЫЕ РИСКИ: Накладываем риски-засечки поверх серой земли ---
+        for (MeshView tickView : piquetTickNodes) {
+            Georadar3DViewer.modelGroup.getChildren().add(tickView);
+        }
+
+        // --- ИНЖЕНЕРНЫЙ ПИКЕТАЖ: Выводим цифры в самый топ кадра для идеальной резкости ---
+        for (Text piquetText : piquetTextNodes) {
+            Georadar3DViewer.modelGroup.getChildren().add(piquetText);
+        }
     }
 
     private float getProjectHeight(float y) {
