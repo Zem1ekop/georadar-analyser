@@ -391,9 +391,9 @@ public class Georadar3DViewer extends Application {
 
         projectMaterial.setDiffuseColor(Color.rgb(180, 180, 180, this.currentOpacityEmbankment));
         meshViewProj.setMaterial(projectMaterial);
-        Georadar3DViewer.modelGroup.getChildren().add(meshViewProj);
+        // Georadar3DViewer.modelGroup.getChildren().add(meshViewProj);
 
-        // --- 2. СТРОИМ ГЕОРАДАРНЫЕ СЛОИ ИЗ БАЗЫ ДАННЫХ (ПРИВЯЗКА К СЛАЙДЕРАМ) ---
+        // --- 2. СТРОИМ ГЕОРАДАРНЫЕ СЛОИ ИЗ БАЗЫ ДАННЫХ С ПРЕДВЫЧИСЛЕННОЙ ИЗОЛИРОВАННОЙ ВРЕЗКОЙ ---
         for (String layer : layerNames) {
             if (layer.equalsIgnoreCase("слой 1")) continue;
 
@@ -409,36 +409,115 @@ public class Georadar3DViewer extends Application {
             TriangleMesh mesh = new TriangleMesh();
             List<Float> pointsList = new ArrayList<>();
 
-            for (RadarProfile profile : profilesWithThisLayer) {
-                float y = profile.getLateralOffset();
-                List<LayerPoint> layerPoints = new ArrayList<>();
-                for (LayerPoint pt : profile.getPoints()) {
-                    if (pt.getLayerName().equalsIgnoreCase(layer)) layerPoints.add(pt);
+            int baseProfilesCount = profilesWithThisLayer.size();
+            int totalNodesPerX = baseProfilesCount + 2; // 2 точки врезки + реальные профили
+
+            for (int i = 0; i < gridNodesCountX; i++) {
+                float targetX = i * gridStepX;
+
+                // 1. Собираем реальные точки георадарного сканирования для текущей координаты X
+                List<java.awt.geom.Point2D.Float> currentCrossSection = new ArrayList<>();
+                for (RadarProfile profile : profilesWithThisLayer) {
+                    List<LayerPoint> okPoints = new ArrayList<>();
+                    for (LayerPoint pt : profile.getPoints()) {
+                        if (pt.getLayerName().equalsIgnoreCase(layer)) okPoints.add(pt);
+                    }
+                    okPoints.sort(Comparator.comparing(LayerPoint::getDistanceX));
+                    float interpolatedZ = getInterpolatedZ(okPoints, targetX);
+                    currentCrossSection.add(new java.awt.geom.Point2D.Float(profile.getLateralOffset(), interpolatedZ));
                 }
-                layerPoints.sort(Comparator.comparing(LayerPoint::getDistanceX));
 
-                for (int i = 0; i < gridNodesCountX; i++) {
-                    float targetX = i * gridStepX;
-                    float interpolatedZ = getInterpolatedZ(layerPoints, targetX);
+                // --- 2.1. ГЕОФИЗИЧЕСКАЯ ЛЕВАЯ ВРЕЗКА С ФИЛЬТРАЦИЕЙ ВЫЛЕТА СЛОЕВ ---
+                java.awt.geom.Point2D.Float firstPt = currentCrossSection.get(0);
+                java.awt.geom.Point2D.Float secondPt = currentCrossSection.get(1);
+                float kLeft = (secondPt.y - firstPt.y) / (secondPt.x - firstPt.x + 0.001f);
 
+                float extLeftY = -7.0f;
+                float extLeftZ = firstPt.y + kLeft * (extLeftY - firstPt.x);
+
+                for (float tempY = firstPt.x; tempY >= -7.0f; tempY -= 0.1f) {
+                    float tempZ = firstPt.y + kLeft * (tempY - firstPt.x);
+                    float slopeZ = getProjectHeight(tempY);
+
+                    // ОГРАНИЧИТЕЛЬ ВЫЛЕТА (ГОСТ ПУ-9):
+                    // Если это Слой 2 (щебень) и он на откосе/обочине (tempY < 0.0м) пытается подняться
+                    // выше уровня бровки земляного полотна (0.0м), принудительно прижимаем его к бровке.
+                    if (layer.equalsIgnoreCase("слой 2") && tempY < 0.0f && tempZ > 0.0f) {
+                        tempZ = -0.003f;
+                    }
+
+                    if (tempZ >= slopeZ) {
+                        extLeftY = tempY;
+                        extLeftZ = slopeZ;
+                        break;
+                    }
+                }
+                if (extLeftZ < -4.0f) {
+                    extLeftZ = -4.0f;
+                    extLeftY = -7.0f;
+                }
+
+                pointsList.add(targetX * this.currentScaleX);
+                pointsList.add(extLeftY * this.currentScaleYZ);
+                pointsList.add(-extLeftZ * this.currentScaleYZ);
+
+                // --- 2.2. ДОБАВЛЕНИЕ ОСНОВНЫХ РЕАЛЬНЫХ ТОЧЕК ПРОФИЛЕЙ ---
+                for (java.awt.geom.Point2D.Float pt : currentCrossSection) {
                     pointsList.add(targetX * this.currentScaleX);
-                    pointsList.add(y * this.currentScaleYZ);          // СТАЛО: масштаб Y привязан!
-                    pointsList.add(-interpolatedZ * this.currentScaleYZ);  // СТАЛО: масштаб Z привязан!
+                    pointsList.add(pt.x * this.currentScaleYZ);
+                    pointsList.add(-pt.y * this.currentScaleYZ);
                 }
+
+                // --- 2.3. ГЕОФИЗИЧЕСКАЯ ПРАВАЯ ВРЕЗКА С ФИЛЬТРАЦИЕЙ ВЫЛЕТА СЛОЕВ ---
+                java.awt.geom.Point2D.Float lastPt = currentCrossSection.get(currentCrossSection.size() - 1);
+                java.awt.geom.Point2D.Float prevLastPt = currentCrossSection.get(currentCrossSection.size() - 2);
+                float kRight = (lastPt.y - prevLastPt.y) / (lastPt.x - prevLastPt.x + 0.001f);
+
+                float extRightY = 16.425f;
+                float extRightZ = lastPt.y + kRight * (extRightY - lastPt.x);
+
+                for (float tempY = lastPt.x; tempY <= 16.425f; tempY += 0.1f) {
+                    float tempZ = lastPt.y + kRight * (tempY - lastPt.x);
+                    float slopeZ = getProjectHeight(tempY);
+
+                    // ОГРАНИЧИТЕЛЬ ВЫЛЕТА (ГОСТ ПУ-9):
+                    // Если щебень справа уходит в зону обочины (tempY > 9.425м) и пытается вылезти в воздух,
+                    // мы жестко заставляем его стелиться по уровню бровки земляного полотна (0.0м).
+                    if (layer.equalsIgnoreCase("слой 2") && tempY > 9.425f && tempZ > 0.0f) {
+                        tempZ = -0.003f;
+                    }
+
+                    if (tempZ >= slopeZ) {
+                        extRightY = tempY;
+                        extRightZ = slopeZ;
+                        break;
+                    }
+                }
+                if (extRightZ < -4.0f) {
+                    extRightZ = -4.0f;
+                    extRightY = 16.425f;
+                }
+
+                pointsList.add(targetX * this.currentScaleX);
+                pointsList.add(extRightY * this.currentScaleYZ);
+                pointsList.add(-extRightZ * this.currentScaleYZ);
             }
 
+                // Формируем float-массив точек для графического конвейера видеокарты
             float[] pointsArray = new float[pointsList.size()];
             for (int i = 0; i < pointsList.size(); i++) pointsArray[i] = pointsList.get(i);
             mesh.getPoints().setAll(pointsArray);
             mesh.getTexCoords().addAll(0, 0);
 
-            int numProfiles = profilesWithThisLayer.size();
-            for (int p = 0; p < numProfiles - 1; p++) {
-                for (int t = 0; t < gridNodesCountX - 1; t++) {
-                    int p0 = p * gridNodesCountX + t;
+            // --- 2.4. ВЫСОКОПРОИЗВОДИТЕЛЬНАЯ ГЕНЕРАЦИЯ ПОЛИГОНОВ (FACES) ---
+            for (int xIdx = 0; xIdx < gridNodesCountX - 1; xIdx++) {
+                for (int nodeIdx = 0; nodeIdx < totalNodesPerX - 1; nodeIdx++) {
+                    int p0 = xIdx * totalNodesPerX + nodeIdx;
                     int p1 = p0 + 1;
-                    int p2 = (p + 1) * gridNodesCountX + t;
+                    int p2 = (xIdx + 1) * totalNodesPerX + nodeIdx;
                     int p3 = p2 + 1;
+
+                    // Связываем треугольники с соблюдением обхода вершин по часовой стрелке
                     mesh.getFaces().addAll(p0, 0, p2, 0, p1, 0);
                     mesh.getFaces().addAll(p1, 0, p2, 0, p3, 0);
                 }
@@ -452,6 +531,7 @@ public class Georadar3DViewer extends Application {
             meshViewLayers.setMaterial(material);
             Georadar3DViewer.modelGroup.getChildren().add(meshViewLayers);
         }
+
 
         // --- 3. СТРОИМ ШПАЛЫ И РЕЛЬСЫ (ОТСТУПЫ ПО 40 СМ ОТ БРОВОК ПРИЗМ) ---
         float hBallastTop = 0.40f;
@@ -488,7 +568,6 @@ public class Georadar3DViewer extends Application {
                     0, 0, 4, 0, 2, 0, 2, 0, 4, 0, 6, 0, // Передний торец (X = 0)
                     1, 0, 3, 0, 5, 0, 3, 0, 7, 0, 5, 0  // Задний торец (X = maxLimitX)
             );
-
 
             MeshView sleeperView = new MeshView(sleeperMesh);
             sleeperView.setCullFace(javafx.scene.shape.CullFace.NONE);
@@ -705,6 +784,10 @@ public class Georadar3DViewer extends Application {
         float leftBermY = -1.000f;
         float rightBermY = 10.425f;
 
+        // Список для накопления рисок и текста, чтобы вывести их поверх прозрачной насыпи
+        List<MeshView> piquetTickNodes = new ArrayList<>();
+        List<Text> piquetTextNodes = new ArrayList<>();
+
         for (int meter = 0; meter <= maxLimitX; meter += stepMeters) {
             float screenX = meter * this.currentScaleX;
 
@@ -722,7 +805,8 @@ public class Georadar3DViewer extends Application {
             MeshView leftTickView = new MeshView(leftTick);
             leftTickView.setCullFace(javafx.scene.shape.CullFace.NONE);
             leftTickView.setMaterial(edgeMat); // СТАЛО: мягкий серый вместо черного вырвиглазного
-            Georadar3DViewer.modelGroup.getChildren().add(leftTickView);
+            //Georadar3DViewer.modelGroup.getChildren().add(leftTickView);
+            piquetTickNodes.add(leftTickView);
 
             // Вертикальные маркеры-флажки слева
             //Text leftText = new Text(String.valueOf(meter));
@@ -737,7 +821,8 @@ public class Georadar3DViewer extends Application {
 
             javafx.scene.transform.Rotate standVerticalLeft = new javafx.scene.transform.Rotate(90, javafx.scene.transform.Rotate.Z_AXIS);
             leftText.getTransforms().addAll(standVerticalLeft);
-            Georadar3DViewer.modelGroup.getChildren().add(leftText);
+            //Georadar3DViewer.modelGroup.getChildren().add(leftText);
+            piquetTextNodes.add(leftText);
 
 
             // --- 2. ОРИЕНТАЦИЯ ПРАВОЙ СТОРОНЫ ---
@@ -754,7 +839,8 @@ public class Georadar3DViewer extends Application {
             MeshView rightTickView = new MeshView(rightTick);
             rightTickView.setCullFace(javafx.scene.shape.CullFace.NONE);
             rightTickView.setMaterial(edgeMat); // СТАЛО: мягкий серый вместо черного
-            Georadar3DViewer.modelGroup.getChildren().add(rightTickView);
+            //Georadar3DViewer.modelGroup.getChildren().add(rightTickView);
+            piquetTickNodes.add(rightTickView);
 
             // Вертикальные маркеры-флажки справа
             //Text rightText = new Text(String.valueOf(meter));
@@ -767,7 +853,21 @@ public class Georadar3DViewer extends Application {
 
             javafx.scene.transform.Rotate standVerticalRight = new javafx.scene.transform.Rotate(90, javafx.scene.transform.Rotate.Z_AXIS);
             rightText.getTransforms().addAll(standVerticalRight);
-            Georadar3DViewer.modelGroup.getChildren().add(rightText);
+            //Georadar3DViewer.modelGroup.getChildren().add(rightText);
+            piquetTextNodes.add(rightText);
+        }
+
+        // --- Добавляем проектную насыпь поверх внутренних слоев ---
+        Georadar3DViewer.modelGroup.getChildren().add(meshViewProj);
+
+        // --- ИНЖЕНЕРНЫЕ РИСКИ: Накладываем риски-засечки поверх серой земли ---
+        for (MeshView tickView : piquetTickNodes) {
+            Georadar3DViewer.modelGroup.getChildren().add(tickView);
+        }
+
+        // --- ИНЖЕНЕРНЫЙ ПИКЕТАЖ: Выводим цифры в самый топ кадра для идеальной резкости ---
+        for (Text piquetText : piquetTextNodes) {
+            Georadar3DViewer.modelGroup.getChildren().add(piquetText);
         }
     }
 
