@@ -28,6 +28,10 @@ public class DxfExportService {
             // 2. Секция геометрических примитивов (ENTITIES)
             writer.println("0\nSECTION\n2\nENTITIES");
 
+            // 2.0. Координатная сетка и шкала высотных отметок
+            writeCoordinateGridAndScales(writer);
+
+
             // 2.1. Заголовок чертежа и пунктирные оси путей (белый цвет ACI = 7)
             int absoluteMeter = Math.round(meterX + startLocationX);
             writeText(writer, "TEXT_ANNOTATIONS", -7.0f, 1.5f, 0.35f,
@@ -46,7 +50,7 @@ public class DxfExportService {
                 embankmentPoints.add(new Point2D.Float(y, getProjectHeight(y)));
             }
             writePolyline(writer, "PROJECT_EMBANKMENT", embankmentPoints);
-            writeLine(writer, "PROJECT_EMBANKMENT", -7.0f, -4.0f, 16.425f, -4.0f);
+            writePolyline(writer, "PROJECT_EMBANKMENT", List.of(new Point2D.Float(-7.0f, -4.0f), new Point2D.Float(16.425f, -4.0f)));
 
             // 2.3. Шпалы и рельсы
             float[][] sleepers = {{0.400f, 3.150f}, {6.275f, 9.025f}};
@@ -132,28 +136,27 @@ public class DxfExportService {
         writer.println("0\nSECTION\n2\nHEADER\n9\n$ACADVER\n1\nAC1009\n0\nENDSEC");
         writer.println("0\nSECTION\n2\nTABLES");
 
-        // 1. Таблица типов линий (LTYPE): объявляем CONTINUOUS и DASHED (пунктир)
         writer.println("0\nTABLE\n2\nLTYPE\n70\n2");
-        writer.println("0\nLTYPE\n2\nCONTINUOUS\n70\n0\n3\nSolid line\n72\n65\n73\n0\n40\n0.0");
-        // DASHED: длина штриха 0.4м, пробел 0.2м
-        writer.println("0\nLTYPE\n2\nDASHED\n70\n0\n3\nDashed line __ __ __\n72\n65\n73\n2\n40\n0.6\n49\n0.4\n49\n-0.2");
+        writer.println("0\nLTYPE\n2\nCONTINUOUS\n70\n64\n3\nSolid line\n72\n65\n73\n0\n40\n0.0");
+        writer.println("0\nLTYPE\n2\nDASHED\n70\n64\n3\nDashed line __ __ __\n72\n65\n73\n2\n40\n0.6\n49\n0.4\n49\n-0.2");
         writer.println("0\nENDTAB");
 
-        // 2. Таблица слоев (LAYER)
-        writer.println("0\nTABLE\n2\nLAYER\n70\n6");
-        writeLayerDef(writer, "PROJECT_EMBANKMENT", 8, "CONTINUOUS");
-        writeLayerDef(writer, "RAILS_AND_SLEEPERS", 250, "CONTINUOUS");
-        writeLayerDef(writer, "LAYER_2_BALLAST", 2, "CONTINUOUS");
-        writeLayerDef(writer, "LAYER_3_SUBGRADE", 34, "CONTINUOUS");
+        writer.println("0\nTABLE\n2\nLAYER\n70\n8");
+        writeLayerDef(writer, "0", 7, "CONTINUOUS");
+        writeLayerDef(writer, "PROJECT_EMBANKMENT", 7, "CONTINUOUS"); // 7 = Белый цвет
+        writeLayerDef(writer, "RAILS_AND_SLEEPERS", 7, "CONTINUOUS"); // 7 = Белый цвет
+        writeLayerDef(writer, "LAYER_2_BALLAST", 2, "CONTINUOUS");    // 2 = Желтый
+        writeLayerDef(writer, "LAYER_3_SUBGRADE", 34, "CONTINUOUS");  // 34 = Коричневый
         writeLayerDef(writer, "TEXT_ANNOTATIONS", 7, "CONTINUOUS");
-        writeLayerDef(writer, "AXIS_LINES", 7, "DASHED"); // Новый слой для пунктирных осей (белый цвет = 7)
+        writeLayerDef(writer, "AXIS_LINES", 7, "DASHED");
+        writeLayerDef(writer, "COORDINATE_GRID", 252, "CONTINUOUS");
         writer.println("0\nENDTAB");
 
         writer.println("0\nENDSEC");
     }
 
     private void writeLayerDef(PrintWriter writer, String name, int colorIndex, String lineType) {
-        writer.printf(Locale.US, "0\nLAYER\n2\n%s\n70\n0\n62\n%d\n6\n%s\n", name, colorIndex, lineType);
+        writer.printf(Locale.US, "0\nLAYER\n2\n%s\n70\n64\n62\n%d\n6\n%s\n", name, colorIndex, lineType);
     }
 
 
@@ -173,7 +176,10 @@ public class DxfExportService {
     }
 
     private void writePolyline(PrintWriter writer, String layer, List<Point2D.Float> points) {
-        writer.printf(Locale.US, "0\nPOLYLINE\n8\n%s\n66\n1\n70\n0\n", layer);
+        // Задаем толщину: 0.04 м (4 см) для контура насыпи и слоев, 0.02 м для рельсов и шпал
+        float width = layer.equals("RAILS_AND_SLEEPERS") ? 0.02f : 0.04f;
+
+        writer.printf(Locale.US, "0\nPOLYLINE\n8\n%s\n66\n1\n70\n0\n40\n%.3f\n41\n%.3f\n", layer, width, width);
         for (Point2D.Float pt : points) {
             writer.printf(Locale.US, "0\nVERTEX\n8\n%s\n10\n%.4f\n20\n%.4f\n", layer, pt.x, pt.y);
         }
@@ -216,5 +222,44 @@ public class DxfExportService {
         }
         return points.get(0).getDepthZ();
     }
+
+    /**
+     * Отрисовывает координатную сетку, вертикальную шкалу высотных отметок (Z)
+     * и горизонтальную шкалу смещений от оси (Y).
+     */
+    private void writeCoordinateGridAndScales(PrintWriter writer) {
+        float minY = -7.0f;
+        float maxY = 16.425f;
+        float minZ = -4.0f;
+        float maxZ = 1.0f;
+
+        // 1. Вертикальная шкала высотных отметок Z
+        float scaleLineY = -7.8f;
+        writeLine(writer, "TEXT_ANNOTATIONS", scaleLineY, minZ, scaleLineY, maxZ);
+        writeText(writer, "TEXT_ANNOTATIONS", scaleLineY - 0.6f, maxZ + 0.35f, 0.22f, "Z, м");
+
+        for (int z = -4; z <= 1; z++) {
+            float fz = (float) z;
+            writeLine(writer, "TEXT_ANNOTATIONS", scaleLineY - 0.15f, fz, scaleLineY + 0.15f, fz);
+            writeLine(writer, "COORDINATE_GRID", minY, fz, maxY, fz);
+            String label = (z > 0) ? String.format(Locale.US, "+%d.0", z) : String.format(Locale.US, "%d.0", z);
+            writeText(writer, "TEXT_ANNOTATIONS", scaleLineY - 1.1f, fz - 0.08f, 0.18f, label);
+        }
+
+        // 2. Горизонтальная шкала расстояний Y
+        float scaleLineZ = -4.8f;
+        writeLine(writer, "TEXT_ANNOTATIONS", minY, scaleLineZ, maxY, scaleLineZ);
+        writeText(writer, "TEXT_ANNOTATIONS", maxY + 0.4f, scaleLineZ - 0.08f, 0.22f, "Y, м");
+
+        for (int y = -6; y <= 16; y += 2) {
+            float fy = (float) y;
+            writeLine(writer, "TEXT_ANNOTATIONS", fy, scaleLineZ - 0.15f, fy, scaleLineZ + 0.15f);
+            writeLine(writer, "COORDINATE_GRID", fy, minZ, fy, maxZ);
+            String label = String.format(Locale.US, "%d", y);
+            writeText(writer, "TEXT_ANNOTATIONS", fy - 0.2f, scaleLineZ - 0.45f, 0.18f, label);
+        }
+    }
+
+
 }
 
