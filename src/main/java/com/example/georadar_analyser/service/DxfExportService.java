@@ -70,6 +70,9 @@ public class DxfExportService {
             exportLayerLine(writer, sortedProfiles, meterX, "слой 2", "LAYER_2_BALLAST");
             exportLayerLine(writer, sortedProfiles, meterX, "слой 3", "LAYER_3_SUBGRADE");
 
+            // 2.5. Сводная CAD-таблица относительных глубин слоев справа от чертежа
+            writeDepthSummaryTable(writer, sortedProfiles, meterX);
+
             // Завершение файла DXF
             writer.println("0\nENDSEC\n0\nEOF");
         }
@@ -260,6 +263,84 @@ public class DxfExportService {
         }
     }
 
+    /**
+     * Отрисовывает сводную таблицу относительных глубин слоев (от поверхности рельефа)
+     * справа от поперечного профиля начиная с координаты X = 18.5 м.
+     */
+    private void writeDepthSummaryTable(PrintWriter writer, List<RadarProfile> profiles, float meterX) {
+        if (profiles.isEmpty()) return;
 
+        float startX = 18.5f;
+        float startZ = 1.0f;
+        float firstColWidth = 3.8f;
+        float dataColWidth = 2.6f;
+        float rowHeight = 0.65f;
+
+        int totalCols = profiles.size() + 1;
+        int totalRows = 4; // Шапка + 3 слоя
+        float totalWidth = firstColWidth + profiles.size() * dataColWidth;
+        float totalHeight = totalRows * rowHeight;
+
+        // Заголовок над таблицей
+        writeText(writer, "TEXT_ANNOTATIONS", startX, startZ + 0.35f, 0.28f, "Ведомость глубин залегания слоев (от рельефа), м");
+
+        // 1. Горизонтальные линии сетки таблицы
+        for (int r = 0; r <= totalRows; r++) {
+            float z = startZ - r * rowHeight;
+            writeLine(writer, "TEXT_ANNOTATIONS", startX, z, startX + totalWidth, z);
+        }
+
+        // 2. Вертикальные линии сетки таблицы
+        writeLine(writer, "TEXT_ANNOTATIONS", startX, startZ, startX, startZ - totalHeight);
+        for (int c = 0; c < totalCols; c++) {
+            float x = startX + firstColWidth + c * dataColWidth;
+            writeLine(writer, "TEXT_ANNOTATIONS", x, startZ, x, startZ - totalHeight);
+        }
+
+        // 3. Заполнение шапки таблицы
+        float headerTextZ = startZ - rowHeight * 0.68f;
+        writeText(writer, "TEXT_ANNOTATIONS", startX + 0.25f, headerTextZ, 0.22f, "Слой / Профиль");
+
+        for (int i = 0; i < profiles.size(); i++) {
+            RadarProfile p = profiles.get(i);
+            float colX = startX + firstColWidth + i * dataColWidth + 0.2f;
+            String colTitle = String.format(Locale.US, "Y=%.2f", p.getLateralOffset());
+            writeText(writer, "TEXT_ANNOTATIONS", colX, headerTextZ, 0.22f, colTitle);
+        }
+
+        // 4. Заполнение строк данных по слоям
+        String[] layerKeys = {"слой 1", "слой 2", "слой 3"};
+        String[] layerTitles = {"Слой 1 (Балласт)", "Слой 2 (Песок)", "Слой 3 (Грунт)"};
+        String[] dxfLayers = {"TEXT_ANNOTATIONS", "LAYER_2_BALLAST", "LAYER_3_SUBGRADE"};
+
+        for (int r = 0; r < layerKeys.length; r++) {
+            float rowTextZ = startZ - (r + 1) * rowHeight - rowHeight * 0.68f;
+            writeText(writer, dxfLayers[r], startX + 0.25f, rowTextZ, 0.20f, layerTitles[r]);
+
+            for (int c = 0; c < profiles.size(); c++) {
+                RadarProfile p = profiles.get(c);
+                float cellX = startX + firstColWidth + c * dataColWidth + 0.45f;
+                float surfaceZ = getProjectHeight(p.getLateralOffset());
+
+                if (r == 0) {
+                    // Слой 1 начинается от дневной поверхности (относительная глубина = 0.00 м)
+                    writeText(writer, dxfLayers[r], cellX, rowTextZ, 0.20f, "0.00");
+                } else {
+                    List<LayerPoint> okPoints = new ArrayList<>();
+                    for (LayerPoint pt : p.getPoints()) {
+                        if (pt.getLayerName().equalsIgnoreCase(layerKeys[r])) okPoints.add(pt);
+                    }
+                    if (!okPoints.isEmpty()) {
+                        okPoints.sort(Comparator.comparing(LayerPoint::getDistanceX));
+                        float absZ = getInterpolatedZ(okPoints, meterX);
+                        float relDepth = Math.max(0.0f, surfaceZ - absZ);
+                        writeText(writer, dxfLayers[r], cellX, rowTextZ, 0.20f, String.format(Locale.US, "%.2f", relDepth));
+                    } else {
+                        writeText(writer, dxfLayers[r], cellX, rowTextZ, 0.20f, "-");
+                    }
+                }
+            }
+        }
+    }
 }
 
