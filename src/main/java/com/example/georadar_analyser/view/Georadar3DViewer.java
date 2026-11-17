@@ -35,12 +35,16 @@ import javafx.scene.text.Text;
 import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
 
+import com.example.georadar_analyser.service.DxfExportService;
+
+
 
 @Component
 public class Georadar3DViewer extends Application {
 
     private static TrackSectionRepository sectionRepository;
     private static GeoradarImportService importService;
+    private static final DxfExportService dxfExportService = new DxfExportService();
     private static Long targetSectionId;
 
     private static Group modelGroup;
@@ -166,10 +170,38 @@ public class Georadar3DViewer extends Application {
             }
         });
 
-
         Button processBtn = new Button("Визуализировать 3D");
         processBtn.setPrefWidth(210);
         processBtn.setStyle("-fx-background-color: #4CAF50; -fx-text-fill: white; -fx-font-weight: bold;");
+
+        // --- НОВАЯ КНОПКА ЭКСПОРТА В AUTOCAD (DXF) ---
+        Button exportDxfBtn = new Button("Экспорт в AutoCAD (.dxf)");
+        exportDxfBtn.setPrefWidth(210);
+        exportDxfBtn.setStyle("-fx-background-color: #0066CC; -fx-text-fill: white; -fx-font-weight: bold;");
+
+        exportDxfBtn.setOnAction(e -> {
+            if (Georadar3DViewer.targetSectionId == null) return;
+
+            Optional<TrackSection> sectionOpt = Georadar3DViewer.sectionRepository.findById(Georadar3DViewer.targetSectionId);
+            if (sectionOpt.isEmpty()) return;
+
+            FileChooser fileChooser = new FileChooser();
+            fileChooser.setTitle("Сохранить поперечный профиль в формате AutoCAD DXF");
+            int absoluteMeter = Math.round(this.currentInspectX + this.startLocationX);
+            fileChooser.setInitialFileName("Section_PK_" + absoluteMeter + "m.dxf");
+            fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("AutoCAD DXF (*.dxf)", "*.dxf"));
+
+            File file = fileChooser.showSaveDialog(primaryStage);
+            if (file != null) {
+                try {
+                    dxfExportService.exportCrossSectionToDxf(sectionOpt.get(), this.currentInspectX, this.startLocationX, file);
+                    System.out.println("Чертеж успешно экспортирован в DXF: " + file.getAbsolutePath());
+                } catch (Exception ex) {
+                    System.err.println("Ошибка при экспорте в DXF: " + ex.getMessage());
+                    ex.printStackTrace();
+                }
+            }
+        });
 
         PointLight pointLight = new PointLight(Color.WHITE);
         pointLight.setTranslateX(10);
@@ -301,7 +333,7 @@ public class Georadar3DViewer extends Application {
                 opacityLabel, opacitySlider,
                 startLocationLabel, startLocationInput,
                 inspectLabel, inspectInput,
-                processBtn
+                processBtn, exportDxfBtn
         );
 
         mainLayout.setLeft(sidePanel);

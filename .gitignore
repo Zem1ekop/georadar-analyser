@@ -27,3 +27,4 @@ Desktop.ini
 
 # Файлы локальной базы данных (если они появятся в корне)
 *.db
+project_snapshot.txt
