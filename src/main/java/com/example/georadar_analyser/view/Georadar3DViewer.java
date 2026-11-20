@@ -344,6 +344,13 @@ public class Georadar3DViewer extends Application {
         primaryStage.setScene(scene);
         primaryStage.show();
         subScene3D.requestFocus();
+
+        // Если при старте приложения из базы данных передан ID участка — сразу строим 3D-модель
+        if (Georadar3DViewer.targetSectionId != null) {
+            rebuild3DModel(Georadar3DViewer.targetSectionId);
+        }
+
+        primaryStage.show();
     }
 
     /**
