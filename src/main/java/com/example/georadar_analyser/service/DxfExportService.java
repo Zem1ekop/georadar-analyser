@@ -16,6 +16,12 @@ import java.util.*;
 @Service
 public class DxfExportService {
 
+    private final GeometryService geometryService;
+
+    public DxfExportService(GeometryService geometryService) {
+        this.geometryService = geometryService;
+    }
+
     /**
      * Экспортирует поперечный разрез на заданном метре пути в формат AutoCAD DXF.
      * Использует кодировку Windows-1251 для корректного отображения кириллицы в CAD-системах.
@@ -44,10 +50,9 @@ public class DxfExportService {
             writeText(writer, "TEXT_ANNOTATIONS", 7.32f, -4.5f, 0.2f, "Ось 2");
 
             // 2.2. Проектный контур земляного полотна и основание
-            float[] projectYGrid = {-7.0f, -1.0f, -0.6f, 0.0f, 1.775f, 3.55f, 4.15f, 4.7f, 5.275f, 5.875f, 7.65f, 9.425f, 10.025f, 10.425f, 16.425f};
             List<Point2D.Float> embankmentPoints = new ArrayList<>();
-            for (float y : projectYGrid) {
-                embankmentPoints.add(new Point2D.Float(y, getProjectHeight(y)));
+            for (float y : GeometryService.PROJECT_Y_GRID) {
+                embankmentPoints.add(new Point2D.Float(y, geometryService.getProjectHeight(y)));
             }
             writePolyline(writer, "PROJECT_EMBANKMENT", embankmentPoints);
             writePolyline(writer, "PROJECT_EMBANKMENT", List.of(new Point2D.Float(-7.0f, -4.0f), new Point2D.Float(16.425f, -4.0f)));
@@ -87,51 +92,13 @@ public class DxfExportService {
             }
             if (okPoints.isEmpty()) continue;
             okPoints.sort(Comparator.comparing(LayerPoint::getDistanceX));
-            float z = getInterpolatedZ(okPoints, meterX);
+            float z = geometryService.getInterpolatedZ(okPoints, meterX);
             pts.add(new Point2D.Float(p.getLateralOffset(), z));
         }
 
         if (pts.size() < 2) return;
 
-        // Левая врезка в откос
-        Point2D.Float first = pts.get(0);
-        Point2D.Float second = pts.get(1);
-        float kLeft = (second.y - first.y) / (second.x - first.x + 0.001f);
-        float extLeftY = -7.0f;
-        float extLeftZ = first.y + kLeft * (extLeftY - first.x);
-        for (float tempY = first.x; tempY >= -7.0f; tempY -= 0.1f) {
-            float tempZ = first.y + kLeft * (tempY - first.x);
-            float slopeZ = getProjectHeight(tempY);
-            if (tempZ >= slopeZ) {
-                extLeftY = tempY;
-                extLeftZ = slopeZ;
-                break;
-            }
-        }
-        if (extLeftZ < -4.0f) { extLeftZ = -4.0f; extLeftY = -7.0f; }
-
-        // Правая врезка в откос
-        Point2D.Float last = pts.get(pts.size() - 1);
-        Point2D.Float prevLast = pts.get(pts.size() - 2);
-        float kRight = (last.y - prevLast.y) / (last.x - prevLast.x + 0.001f);
-        float extRightY = 16.425f;
-        float extRightZ = last.y + kRight * (extRightY - last.x);
-        for (float tempY = last.x; tempY <= 16.425f; tempY += 0.1f) {
-            float tempZ = last.y + kRight * (tempY - last.x);
-            float slopeZ = getProjectHeight(tempY);
-            if (tempZ >= slopeZ) {
-                extRightY = tempY;
-                extRightZ = slopeZ;
-                break;
-            }
-        }
-        if (extRightZ < -4.0f) { extRightZ = -4.0f; extRightY = 16.425f; }
-
-        List<Point2D.Float> fullLine = new ArrayList<>();
-        fullLine.add(new Point2D.Float(extLeftY, extLeftZ));
-        fullLine.addAll(pts);
-        fullLine.add(new Point2D.Float(extRightY, extRightZ));
-
+        List<Point2D.Float> fullLine = geometryService.extrapolateLayerToSlopes(pts);
         writePolyline(writer, dxfLayer, fullLine);
     }
 
@@ -191,39 +158,6 @@ public class DxfExportService {
 
     private void writeText(PrintWriter writer, String layer, float x, float y, float height, String text) {
         writer.printf(Locale.US, "0\nTEXT\n8\n%s\n10\n%.4f\n20\n%.4f\n40\n%.2f\n1\n%s\n", layer, x, y, height, text);
-    }
-
-    private float getProjectHeight(float y) {
-        if (y < -7.000f) return -4.0f;
-        else if (y < -1.000f) return -4.0f + ((y + 7.0f) / 6.0f) * 4.0f;
-        else if (y < -0.600f) return 0.0f;
-        else if (y < 0.000f) return ((y + 0.6f) / 0.6f) * 0.40f;
-        else if (y < 3.550f) return 0.40f;
-        else if (y < 4.150f) return 0.40f - ((y - 3.55f) / 0.6f) * 0.40f;
-        else if (y < 5.275f) return 0.0f;
-        else if (y < 5.875f) return ((y - 5.275f) / 0.6f) * 0.40f;
-        else if (y < 9.425f) return 0.40f;
-        else if (y < 10.025f) return 0.40f - ((y - 9.425f) / 0.6f) * 0.40f;
-        else if (y < 10.425f) return 0.0f;
-        else if (y < 16.425f) return -((y - 10.425f) / 6.0f) * 4.0f;
-        else return -4.0f;
-    }
-
-    private float getInterpolatedZ(List<LayerPoint> points, float targetX) {
-        if (points.isEmpty()) return 0.0f;
-        if (targetX <= points.get(0).getDistanceX()) return points.get(0).getDepthZ();
-        if (targetX >= points.get(points.size() - 1).getDistanceX()) return points.get(points.size() - 1).getDepthZ();
-
-        for (int i = 0; i < points.size() - 1; i++) {
-            LayerPoint p1 = points.get(i);
-            LayerPoint p2 = points.get(i + 1);
-            if (targetX >= p1.getDistanceX() && targetX <= p2.getDistanceX()) {
-                if (Math.abs(p2.getDistanceX() - p1.getDistanceX()) < 0.001f) return p1.getDepthZ();
-                float ratio = (targetX - p1.getDistanceX()) / (p2.getDistanceX() - p1.getDistanceX());
-                return p1.getDepthZ() + ratio * (p2.getDepthZ() - p1.getDepthZ());
-            }
-        }
-        return points.get(0).getDepthZ();
     }
 
     /**
@@ -320,7 +254,7 @@ public class DxfExportService {
             for (int c = 0; c < profiles.size(); c++) {
                 RadarProfile p = profiles.get(c);
                 float cellX = startX + firstColWidth + c * dataColWidth + 0.45f;
-                float surfaceZ = getProjectHeight(p.getLateralOffset());
+                float surfaceZ = geometryService.getProjectHeight(p.getLateralOffset());
 
                 if (r == 0) {
                     // Слой 1 начинается от дневной поверхности (относительная глубина = 0.00 м)
@@ -332,7 +266,7 @@ public class DxfExportService {
                     }
                     if (!okPoints.isEmpty()) {
                         okPoints.sort(Comparator.comparing(LayerPoint::getDistanceX));
-                        float absZ = getInterpolatedZ(okPoints, meterX);
+                        float absZ = geometryService.getInterpolatedZ(okPoints, meterX);
                         float relDepth = Math.max(0.0f, surfaceZ - absZ);
                         writeText(writer, dxfLayers[r], cellX, rowTextZ, 0.20f, String.format(Locale.US, "%.2f", relDepth));
                     } else {

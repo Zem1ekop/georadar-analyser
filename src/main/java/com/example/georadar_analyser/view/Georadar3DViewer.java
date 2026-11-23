@@ -4,32 +4,36 @@ import com.example.georadar_analyser.entity.LayerPoint;
 import com.example.georadar_analyser.entity.RadarProfile;
 import com.example.georadar_analyser.entity.TrackSection;
 import com.example.georadar_analyser.repository.TrackSectionRepository;
+import com.example.georadar_analyser.service.GeometryService;
 import com.example.georadar_analyser.service.GeoradarImportService;
 import javafx.application.Application;
+import javafx.geometry.Orientation;
+import javafx.geometry.Point3D;
 import javafx.scene.AmbientLight;
 import javafx.scene.Group;
 import javafx.scene.PerspectiveCamera;
 import javafx.scene.PointLight;
 import javafx.scene.Scene;
 import javafx.scene.SceneAntialiasing;
-import javafx.scene.control.TextField;
+import javafx.scene.control.*;
+import javafx.scene.layout.Pane;
 import javafx.scene.paint.Color;
 import javafx.scene.paint.PhongMaterial;
-import javafx.scene.shape.MeshView;
-import javafx.scene.shape.TriangleMesh;
+import javafx.scene.shape.*;
+import javafx.scene.transform.Rotate;
 import javafx.stage.Stage;
 import org.springframework.stereotype.Component;
+
+import java.awt.geom.Point2D;
 import java.util.*;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.VBox;
-import javafx.scene.control.Button;
-import javafx.scene.control.Label;
-import javafx.scene.control.Slider;
 import javafx.geometry.Insets;
 import javafx.scene.SubScene;
 import javafx.stage.FileChooser;
 import java.io.File;
 import java.io.FileInputStream;
+import java.util.function.Function;
 
 import javafx.scene.text.Text;
 import javafx.scene.text.Font;
@@ -44,9 +48,9 @@ public class Georadar3DViewer extends Application {
 
     private static TrackSectionRepository sectionRepository;
     private static GeoradarImportService importService;
-    private static final DxfExportService dxfExportService = new DxfExportService();
     private static Long targetSectionId;
-
+    private static final GeometryService geometryService = new GeometryService();
+    private static final DxfExportService dxfExportService = new DxfExportService(geometryService);
     private static Group modelGroup;
     private PerspectiveCamera camera;
 
@@ -63,7 +67,7 @@ public class Georadar3DViewer extends Application {
     // Начальная путевая отметка (абсолютный пикетаж в метрах)
     private float startLocationX = 0.0f;
     private float currentInspectX = 0.0f;
-    private static javafx.scene.layout.Pane crossSectionCanvas2D;
+    private static Pane crossSectionCanvas2D;
 
     public Georadar3DViewer() {
     }
@@ -133,7 +137,7 @@ public class Georadar3DViewer extends Application {
 
         // 4. Текстовое поле для ввода начальной отметки километража по ПУ-9
         Label startLocationLabel = new Label("Начальная отметка X (м):");
-        javafx.scene.control.TextField startLocationInput = new javafx.scene.control.TextField("0.0");
+        TextField startLocationInput = new TextField("0.0");
         startLocationInput.setPrefWidth(210);
 
         startLocationInput.textProperty().addListener((obs, oldText, newText) -> {
@@ -147,7 +151,7 @@ public class Georadar3DViewer extends Application {
 
         // 5. Текстовое поле для точного выбора метра разреза по ПУ-9/Шкале
         Label inspectLabel = new Label("Снять разрез на метре (X):");
-        javafx.scene.control.TextField inspectInput = new javafx.scene.control.TextField("0.0");
+        TextField inspectInput = new TextField("0.0");
         inspectInput.setPrefWidth(210);
         inspectInput.setStyle("-fx-border-color: #0066CC; -fx-border-width: 1;");
 
@@ -226,8 +230,8 @@ public class Georadar3DViewer extends Application {
         root3D.getChildren().add(cameraXform);
 
         // --- ИНИЦИАЛИЗАЦИЯ ДВУХЗОННОГО ИНТЕРФЕЙСА ЧЕРЕЗ SPLITPANE ---
-        javafx.scene.control.SplitPane centerSplitPane = new javafx.scene.control.SplitPane();
-        centerSplitPane.setOrientation(javafx.geometry.Orientation.VERTICAL);
+        SplitPane centerSplitPane = new SplitPane();
+        centerSplitPane.setOrientation(Orientation.VERTICAL);
 
         // Верхняя зона: 3D-модель насыпи
         SubScene subScene3D = new SubScene(root3D, 774, 450, true, SceneAntialiasing.BALANCED);
@@ -236,7 +240,7 @@ public class Georadar3DViewer extends Application {
         subScene3D.heightProperty().bind(centerSplitPane.heightProperty().multiply(0.65)); // 3D занимает 65% высоты
 
         // Нижняя зона: Белый холст для плоского 2D CAD-чертежа водоупора
-        crossSectionCanvas2D = new javafx.scene.layout.Pane();
+        crossSectionCanvas2D = new Pane();
         crossSectionCanvas2D.setStyle("-fx-background-color: #FFFFFF; -fx-border-color: #999999; -fx-border-width: 1 0 0 0;");
         crossSectionCanvas2D.setPrefHeight(270);
 
@@ -296,9 +300,9 @@ public class Georadar3DViewer extends Application {
             }
         });
 
-        javafx.scene.transform.Rotate rotateY = new javafx.scene.transform.Rotate(-30, javafx.geometry.Point3D.ZERO.add(0, 1, 0));
+        Rotate rotateY = new Rotate(-30, Point3D.ZERO.add(0, 1, 0));
         globalGroup.getTransforms().add(rotateY);
-        javafx.scene.transform.Rotate rotateX = new javafx.scene.transform.Rotate(35, javafx.geometry.Point3D.ZERO.add(1, 0, 0));
+        Rotate rotateX = new Rotate(35, Point3D.ZERO.add(1, 0, 0));
         modelGroup.getTransforms().add(rotateX);
 
         subScene3D.setOnMousePressed(me -> {
@@ -398,7 +402,7 @@ public class Georadar3DViewer extends Application {
         for (float y : projectYGrid) {
             for (int i = 0; i < gridNodesCountX; i++) {
                 float targetX = i * gridStepX;
-                float projectZ = getProjectHeight(y);
+                float projectZ = geometryService.getProjectHeight(y);
 
                 projectPoints.add(targetX * this.currentScaleX);
                 projectPoints.add(y * this.currentScaleYZ);          // СТАЛО: масштаб Y с ползунка!
@@ -424,8 +428,8 @@ public class Georadar3DViewer extends Application {
         }
 
         MeshView meshViewProj = new MeshView(projectMesh);
-        meshViewProj.setCullFace(javafx.scene.shape.CullFace.NONE);
-        meshViewProj.setDrawMode(javafx.scene.shape.DrawMode.FILL);
+        meshViewProj.setCullFace(CullFace.NONE);
+        meshViewProj.setDrawMode(DrawMode.FILL);
         PhongMaterial projectMaterial = new PhongMaterial();
 
         projectMaterial.setDiffuseColor(Color.rgb(180, 180, 180, this.currentOpacityEmbankment));
@@ -455,20 +459,20 @@ public class Georadar3DViewer extends Application {
                 float targetX = i * gridStepX;
 
                 // 1. Собираем реальные точки георадарного сканирования для текущей координаты X
-                List<java.awt.geom.Point2D.Float> currentCrossSection = new ArrayList<>();
+                List<Point2D.Float> currentCrossSection = new ArrayList<>();
                 for (RadarProfile profile : profilesWithThisLayer) {
                     List<LayerPoint> okPoints = new ArrayList<>();
                     for (LayerPoint pt : profile.getPoints()) {
                         if (pt.getLayerName().equalsIgnoreCase(layer)) okPoints.add(pt);
                     }
                     okPoints.sort(Comparator.comparing(LayerPoint::getDistanceX));
-                    float interpolatedZ = getInterpolatedZ(okPoints, targetX);
-                    currentCrossSection.add(new java.awt.geom.Point2D.Float(profile.getLateralOffset(), interpolatedZ));
+                    float interpolatedZ = geometryService.getInterpolatedZ(okPoints, targetX);
+                    currentCrossSection.add(new Point2D.Float(profile.getLateralOffset(), interpolatedZ));
                 }
 
                 // --- 2.1. ГЕОФИЗИЧЕСКАЯ ЛЕВАЯ ВРЕЗКА С ФИЛЬТРАЦИЕЙ ВЫЛЕТА СЛОЕВ ---
-                java.awt.geom.Point2D.Float firstPt = currentCrossSection.get(0);
-                java.awt.geom.Point2D.Float secondPt = currentCrossSection.get(1);
+                Point2D.Float firstPt = currentCrossSection.get(0);
+                Point2D.Float secondPt = currentCrossSection.get(1);
                 float kLeft = (secondPt.y - firstPt.y) / (secondPt.x - firstPt.x + 0.001f);
 
                 float extLeftY = -7.0f;
@@ -476,7 +480,7 @@ public class Georadar3DViewer extends Application {
 
                 for (float tempY = firstPt.x; tempY >= -7.0f; tempY -= 0.1f) {
                     float tempZ = firstPt.y + kLeft * (tempY - firstPt.x);
-                    float slopeZ = getProjectHeight(tempY);
+                    float slopeZ = geometryService.getProjectHeight(tempY);
 
                     // ОГРАНИЧИТЕЛЬ ВЫЛЕТА (ГОСТ ПУ-9):
                     // Если это Слой 2 (щебень) и он на откосе/обочине (tempY < 0.0м) пытается подняться
@@ -501,15 +505,15 @@ public class Georadar3DViewer extends Application {
                 pointsList.add(-extLeftZ * this.currentScaleYZ);
 
                 // --- 2.2. ДОБАВЛЕНИЕ ОСНОВНЫХ РЕАЛЬНЫХ ТОЧЕК ПРОФИЛЕЙ ---
-                for (java.awt.geom.Point2D.Float pt : currentCrossSection) {
+                for (Point2D.Float pt : currentCrossSection) {
                     pointsList.add(targetX * this.currentScaleX);
                     pointsList.add(pt.x * this.currentScaleYZ);
                     pointsList.add(-pt.y * this.currentScaleYZ);
                 }
 
                 // --- 2.3. ГЕОФИЗИЧЕСКАЯ ПРАВАЯ ВРЕЗКА С ФИЛЬТРАЦИЕЙ ВЫЛЕТА СЛОЕВ ---
-                java.awt.geom.Point2D.Float lastPt = currentCrossSection.get(currentCrossSection.size() - 1);
-                java.awt.geom.Point2D.Float prevLastPt = currentCrossSection.get(currentCrossSection.size() - 2);
+                Point2D.Float lastPt = currentCrossSection.get(currentCrossSection.size() - 1);
+                Point2D.Float prevLastPt = currentCrossSection.get(currentCrossSection.size() - 2);
                 float kRight = (lastPt.y - prevLastPt.y) / (lastPt.x - prevLastPt.x + 0.001f);
 
                 float extRightY = 16.425f;
@@ -517,7 +521,7 @@ public class Georadar3DViewer extends Application {
 
                 for (float tempY = lastPt.x; tempY <= 16.425f; tempY += 0.1f) {
                     float tempZ = lastPt.y + kRight * (tempY - lastPt.x);
-                    float slopeZ = getProjectHeight(tempY);
+                    float slopeZ = geometryService.getProjectHeight(tempY);
 
                     // ОГРАНИЧИТЕЛЬ ВЫЛЕТА (ГОСТ ПУ-9):
                     // Если щебень справа уходит в зону обочины (tempY > 9.425м) и пытается вылезти в воздух,
@@ -563,8 +567,8 @@ public class Georadar3DViewer extends Application {
             }
 
             MeshView meshViewLayers = new MeshView(mesh);
-            meshViewLayers.setCullFace(javafx.scene.shape.CullFace.NONE);
-            meshViewLayers.setDrawMode(javafx.scene.shape.DrawMode.FILL);
+            meshViewLayers.setCullFace(CullFace.NONE);
+            meshViewLayers.setDrawMode(DrawMode.FILL);
             PhongMaterial material = new PhongMaterial(layerColors.getOrDefault(layer, Color.CYAN));
             material.setSpecularColor(Color.WHITE);
             meshViewLayers.setMaterial(material);
@@ -609,7 +613,7 @@ public class Georadar3DViewer extends Application {
             );
 
             MeshView sleeperView = new MeshView(sleeperMesh);
-            sleeperView.setCullFace(javafx.scene.shape.CullFace.NONE);
+            sleeperView.setCullFace(CullFace.NONE);
             PhongMaterial sleeperMat = new PhongMaterial(Color.rgb(105, 75, 45)); // Матовый темно-деревянный цвет
             sleeperMat.setSpecularColor(Color.WHITE);
             sleeperView.setMaterial(sleeperMat);
@@ -658,7 +662,7 @@ public class Georadar3DViewer extends Application {
 
 
             MeshView railView = new MeshView(railMesh);
-            railView.setCullFace(javafx.scene.shape.CullFace.NONE);
+            railView.setCullFace(CullFace.NONE);
             PhongMaterial railMat = new PhongMaterial(Color.DARKSLATEGRAY); // Плотный стальной цвет
             railMat.setSpecularColor(Color.WHITE); // Блик металла под лучами PointLight
             railView.setMaterial(railMat);
@@ -705,7 +709,7 @@ public class Georadar3DViewer extends Application {
             edgeMesh.getFaces().addAll(0, 0, 2, 0, 1, 0, 1, 0, 2, 0, 3, 0);
 
             MeshView edgeView = new MeshView(edgeMesh);
-            edgeView.setCullFace(javafx.scene.shape.CullFace.NONE);
+            edgeView.setCullFace(CullFace.NONE);
             edgeView.setMaterial(edgeMat);
             Georadar3DViewer.modelGroup.getChildren().add(edgeView);
         }
@@ -730,8 +734,8 @@ public class Georadar3DViewer extends Application {
         );
 
         MeshView groundView = new MeshView(groundMesh);
-        groundView.setCullFace(javafx.scene.shape.CullFace.NONE);
-        groundView.setDrawMode(javafx.scene.shape.DrawMode.FILL);
+        groundView.setCullFace(CullFace.NONE);
+        groundView.setDrawMode(DrawMode.FILL);
 
         // --- СТАНДАРТНЫЙ МАТОВЫЙ МАТЕРИАЛ ЗЕМЛИ (БЕЗ ГЛЯНЦА И ОШИБОК API) ---
         PhongMaterial groundMaterial = new PhongMaterial();
@@ -794,7 +798,7 @@ public class Georadar3DViewer extends Application {
             frontEdgeMesh.getFaces().addAll(0, 0, 2, 0, 1, 0, 1, 0, 2, 0, 3, 0);
 
             MeshView frontEdgeView = new MeshView(frontEdgeMesh);
-            frontEdgeView.setCullFace(javafx.scene.shape.CullFace.NONE);
+            frontEdgeView.setCullFace(CullFace.NONE);
             frontEdgeView.setMaterial(edgeMat); // Наш мягкий серый графитовый цвет
             Georadar3DViewer.modelGroup.getChildren().add(frontEdgeView);
 
@@ -810,7 +814,7 @@ public class Georadar3DViewer extends Application {
             backEdgeMesh.getFaces().addAll(0, 0, 2, 0, 1, 0, 1, 0, 2, 0, 3, 0);
 
             MeshView backEdgeView = new MeshView(backEdgeMesh);
-            backEdgeView.setCullFace(javafx.scene.shape.CullFace.NONE);
+            backEdgeView.setCullFace(CullFace.NONE);
             backEdgeView.setMaterial(edgeMat);
             Georadar3DViewer.modelGroup.getChildren().add(backEdgeView);
         }
@@ -842,7 +846,7 @@ public class Georadar3DViewer extends Application {
             leftTick.getTexCoords().addAll(0, 0);
             leftTick.getFaces().addAll(0, 0, 2, 0, 1, 0, 1, 0, 2, 0, 3, 0);
             MeshView leftTickView = new MeshView(leftTick);
-            leftTickView.setCullFace(javafx.scene.shape.CullFace.NONE);
+            leftTickView.setCullFace(CullFace.NONE);
             leftTickView.setMaterial(edgeMat); // СТАЛО: мягкий серый вместо черного вырвиглазного
             //Georadar3DViewer.modelGroup.getChildren().add(leftTickView);
             piquetTickNodes.add(leftTickView);
@@ -858,7 +862,7 @@ public class Georadar3DViewer extends Application {
             leftText.setTranslateY((leftBermY - 0.5f) * this.currentScaleYZ);
             leftText.setTranslateZ(-piquetZ * this.currentScaleYZ - 15f);
 
-            javafx.scene.transform.Rotate standVerticalLeft = new javafx.scene.transform.Rotate(90, javafx.scene.transform.Rotate.Z_AXIS);
+            Rotate standVerticalLeft = new Rotate(90, Rotate.Z_AXIS);
             leftText.getTransforms().addAll(standVerticalLeft);
             //Georadar3DViewer.modelGroup.getChildren().add(leftText);
             piquetTextNodes.add(leftText);
@@ -876,7 +880,7 @@ public class Georadar3DViewer extends Application {
             rightTick.getTexCoords().addAll(0, 0);
             rightTick.getFaces().addAll(0, 0, 2, 0, 1, 0, 1, 0, 2, 0, 3, 0);
             MeshView rightTickView = new MeshView(rightTick);
-            rightTickView.setCullFace(javafx.scene.shape.CullFace.NONE);
+            rightTickView.setCullFace(CullFace.NONE);
             rightTickView.setMaterial(edgeMat); // СТАЛО: мягкий серый вместо черного
             //Georadar3DViewer.modelGroup.getChildren().add(rightTickView);
             piquetTickNodes.add(rightTickView);
@@ -890,7 +894,7 @@ public class Georadar3DViewer extends Application {
             rightText.setTranslateY((rightBermY + 0.4f) * this.currentScaleYZ);
             rightText.setTranslateZ(-piquetZ * this.currentScaleYZ - 15f);
 
-            javafx.scene.transform.Rotate standVerticalRight = new javafx.scene.transform.Rotate(90, javafx.scene.transform.Rotate.Z_AXIS);
+            Rotate standVerticalRight = new Rotate(90, Rotate.Z_AXIS);
             rightText.getTransforms().addAll(standVerticalRight);
             //Georadar3DViewer.modelGroup.getChildren().add(rightText);
             piquetTextNodes.add(rightText);
@@ -908,73 +912,6 @@ public class Georadar3DViewer extends Application {
         for (Text piquetText : piquetTextNodes) {
             Georadar3DViewer.modelGroup.getChildren().add(piquetText);
         }
-    }
-
-    private float getProjectHeight(float y) {
-        float hBallastTop = 0.40f;
-        float hSubgradeZero = 0.0f;
-        float hGroundLevel = -4.0f;
-
-        float leftEmbankmentBottom = -7.000f;
-        float leftBermStart = -1.000f;
-        float leftBallastSlopeStart = -0.600f;
-
-        float leftShoulderTrack1 = 0.000f;
-        float rightShoulderTrack1 = 3.550f;
-        float leftBallastSlopeEnd = 4.150f;
-
-        float rightBallastSlopeStart = 5.275f;
-        float leftShoulderTrack2 = 5.875f;
-        float rightShoulderTrack2 = 9.425f;
-
-        float rightBallastSlopeEnd = 10.025f;
-        float rightBermEnd = 10.425f;
-        float rightEmbankmentBottom = 16.425f;
-
-        if (y < leftEmbankmentBottom) return hGroundLevel;
-        else if (y >= leftEmbankmentBottom && y < leftBermStart) {
-            float ratio = (y - leftEmbankmentBottom) / (leftBermStart - leftEmbankmentBottom);
-            return hGroundLevel + ratio * (hSubgradeZero - hGroundLevel);
-        } else if (y >= leftBermStart && y < leftBallastSlopeStart) return hSubgradeZero;
-        else if (y >= leftBallastSlopeStart && y < leftShoulderTrack1) {
-            float ratio = (y - leftBallastSlopeStart) / (leftShoulderTrack1 - leftBallastSlopeStart);
-            return hSubgradeZero + ratio * (hBallastTop - hSubgradeZero);
-        } else if (y >= leftShoulderTrack1 && y < rightShoulderTrack1) return hBallastTop;
-        else if (y >= rightShoulderTrack1 && y < leftBallastSlopeEnd) {
-            float ratio = (y - rightShoulderTrack1) / (leftBallastSlopeEnd - rightShoulderTrack1);
-            return hBallastTop + ratio * (hSubgradeZero - hBallastTop);
-        } else if (y >= leftBallastSlopeEnd && y < rightBallastSlopeStart) return hSubgradeZero;
-        else if (y >= rightBallastSlopeStart && y < leftShoulderTrack2) {
-            float ratio = (y - rightBallastSlopeStart) / (leftShoulderTrack2 - rightBallastSlopeStart);
-            return hSubgradeZero + ratio * (hBallastTop - hSubgradeZero);
-        } else if (y >= leftShoulderTrack2 && y < rightShoulderTrack2) return hBallastTop;
-        else if (y >= rightShoulderTrack2 && y < rightBallastSlopeEnd) {
-            float ratio = (y - rightShoulderTrack2) / (rightBallastSlopeEnd - rightShoulderTrack2);
-            return hBallastTop + ratio * (hSubgradeZero - hBallastTop);
-        } else if (y >= rightBallastSlopeEnd && y < rightBermEnd) return hSubgradeZero;
-        else if (y >= rightBermEnd && y < rightEmbankmentBottom) {
-            float ratio = (y - rightBermEnd) / (rightEmbankmentBottom - rightBermEnd);
-            return hSubgradeZero + ratio * (hGroundLevel - hSubgradeZero);
-        } else return hGroundLevel;
-    }
-
-    private float getInterpolatedZ(List<LayerPoint> points, float targetX) {
-        if (points.isEmpty()) return 0.0f;
-        if (targetX <= points.get(0).getDistanceX()) return points.get(0).getDepthZ();
-        if (targetX >= points.get(points.size() - 1).getDistanceX()) return points.get(points.size() - 1).getDepthZ();
-
-        for (int i = 0; i < points.size() - 1; i++) {
-            LayerPoint p1 = points.get(i);
-            LayerPoint p2 = points.get(i + 1);
-            if (targetX >= p1.getDistanceX() && targetX <= p2.getDistanceX()) {
-                if (Math.abs(p2.getDistanceX() - p1.getDistanceX()) < 0.001f) {
-                    return p1.getDepthZ();
-                }
-                float ratio = (targetX - p1.getDistanceX()) / (p2.getDistanceX() - p1.getDistanceX());
-                return p1.getDepthZ() + ratio * (p2.getDepthZ() - p1.getDepthZ());
-            }
-        }
-        return points.get(0).getDepthZ();
     }
 
     /**
@@ -1024,8 +961,8 @@ public class Georadar3DViewer extends Application {
         float offsetX = 70.0f;
         float centerY = 180.0f;
 
-        java.util.function.Function<Float, Double> mapY = y -> (double) (offsetX + (y + 7.0f) * scale);
-        java.util.function.Function<Float, Double> mapZ = z -> (double) (centerY - z * scale);
+        Function<Float, Double> mapY = y -> (double) (offsetX + (y + 7.0f) * scale);
+        Function<Float, Double> mapZ = z -> (double) (centerY - z * scale);
 
         // 3. ОТРИСОВКА ИНФОРМАЦИОННОЙ ШАПКИ ЧЕРТЕЖА (Строго над поперечником)
         int absoluteMeter = (int) Math.round(meterX + this.startLocationX);
@@ -1044,7 +981,7 @@ public class Georadar3DViewer extends Application {
             double screenY = mapZ.apply(zVal);
 
             // 1. Рисуем тонкую горизонтальную линию сетки (background grid)
-            javafx.scene.shape.Line gridLine = new javafx.scene.shape.Line(startScaleX, screenY, endGridX, screenY);
+            Line gridLine = new Line(startScaleX, screenY, endGridX, screenY);
             gridLine.setStroke(Color.rgb(230, 230, 230)); // Очень мягкий серый цвет сетки
             gridLine.setStrokeWidth(0.8);
             if (Math.abs(zVal - 0.0f) < 0.01f) {
@@ -1054,7 +991,7 @@ public class Georadar3DViewer extends Application {
             crossSectionCanvas2D.getChildren().add(gridLine);
 
             // 2. Рисуем засечки на самой шкале
-            javafx.scene.shape.Line tick = new javafx.scene.shape.Line(startScaleX - 4, screenY, startScaleX, screenY);
+            Line tick = new Line(startScaleX - 4, screenY, startScaleX, screenY);
             tick.setStroke(Color.rgb(120, 120, 120));
             tick.setStrokeWidth(1.0);
             crossSectionCanvas2D.getChildren().add(tick);
@@ -1068,7 +1005,7 @@ public class Georadar3DViewer extends Application {
         }
 
         // Рисуем саму вертикальную осевую нить линейки
-        javafx.scene.shape.Line mainScaleLine = new javafx.scene.shape.Line(startScaleX, mapZ.apply(1.0f), startScaleX, mapZ.apply(-4.0f));
+        Line mainScaleLine = new Line(startScaleX, mapZ.apply(1.0f), startScaleX, mapZ.apply(-4.0f));
         mainScaleLine.setStroke(Color.rgb(120, 120, 120));
         mainScaleLine.setStrokeWidth(1.2);
         crossSectionCanvas2D.getChildren().add(mainScaleLine);
@@ -1084,7 +1021,7 @@ public class Georadar3DViewer extends Application {
             double sTop = mapZ.apply(0.60f);
             double sBottom = mapZ.apply(0.40f);
 
-            javafx.scene.shape.Rectangle sleeperRect = new javafx.scene.shape.Rectangle(sLeft, sTop, (sRight - sLeft), (sBottom - sTop));
+            Rectangle sleeperRect = new Rectangle(sLeft, sTop, (sRight - sLeft), (sBottom - sTop));
             sleeperRect.setFill(Color.rgb(120, 90, 60));
             sleeperRect.setStroke(Color.rgb(80, 60, 40));
             crossSectionCanvas2D.getChildren().add(sleeperRect);
@@ -1098,7 +1035,7 @@ public class Georadar3DViewer extends Application {
             double rTop = mapZ.apply(0.78f);
             double rBottom = mapZ.apply(0.60f);
 
-            javafx.scene.shape.Rectangle railRect = new javafx.scene.shape.Rectangle(rLeft, rTop, (rRight - rLeft), (rBottom - rTop));
+            Rectangle railRect = new Rectangle(rLeft, rTop, (rRight - rLeft), (rBottom - rTop));
             railRect.setFill(Color.DARKSLATEGRAY);
             crossSectionCanvas2D.getChildren().add(railRect);
         }
@@ -1114,7 +1051,7 @@ public class Georadar3DViewer extends Application {
             double screenYTop = mapZ.apply(topZAxis);
             double screenYBottom = mapZ.apply(bottomZAxis);
 
-            javafx.scene.shape.Line axisLine = new javafx.scene.shape.Line(screenX, screenYTop, screenX, screenYBottom);
+            Line axisLine = new Line(screenX, screenYTop, screenX, screenYBottom);
             axisLine.setStroke(Color.rgb(70, 90, 140)); // Благородный темно-синий цвет осей
             axisLine.setStrokeWidth(1.0); // Тонкая инженерная линия
 
@@ -1141,7 +1078,7 @@ public class Georadar3DViewer extends Application {
             String layerName = entry.getKey();
             Color color = entry.getValue();
 
-            List<java.awt.geom.Point2D.Float> currentLayerPoints = new ArrayList<>();
+            List<Point2D.Float> currentLayerPoints = new ArrayList<>();
             for (RadarProfile p : sortedProfiles) {
                 List<LayerPoint> okPoints = new ArrayList<>();
                 for (LayerPoint pt : p.getPoints()) {
@@ -1150,18 +1087,18 @@ public class Georadar3DViewer extends Application {
                 if (okPoints.isEmpty()) continue;
                 okPoints.sort(Comparator.comparing(LayerPoint::getDistanceX));
 
-                float interpolatedZ = getInterpolatedZ(okPoints, meterX);
-                currentLayerPoints.add(new java.awt.geom.Point2D.Float(p.getLateralOffset(), interpolatedZ));
+                float interpolatedZ = geometryService.getInterpolatedZ(okPoints, meterX);
+                currentLayerPoints.add(new Point2D.Float(p.getLateralOffset(), interpolatedZ));
             }
 
             if (currentLayerPoints.size() >= 2) {
-                javafx.scene.shape.Polyline layerPolyline = new javafx.scene.shape.Polyline();
+                Polyline layerPolyline = new Polyline();
                 layerPolyline.setStroke(color);
                 layerPolyline.setStrokeWidth(2.5);
 
                 // --- 7.1. РАСЧЕТ ЛЕВОЙ ВРЕЗКИ (РАЗРЕШАЕМ ДВИЖЕНИЕ ДО ПОДОШВЫ Y = -7.0м) ---
-                java.awt.geom.Point2D.Float firstPt = currentLayerPoints.get(0);
-                java.awt.geom.Point2D.Float secondPt = currentLayerPoints.get(1);
+                Point2D.Float firstPt = currentLayerPoints.get(0);
+                Point2D.Float secondPt = currentLayerPoints.get(1);
                 float kLeft = (secondPt.y - firstPt.y) / (secondPt.x - firstPt.x + 0.001f);
 
                 // Тянем луч до самого края левой земли
@@ -1171,7 +1108,7 @@ public class Georadar3DViewer extends Application {
                 // Идем пошагово назад от плеча, чтобы найти честное пересечение с ломаным рельефом откоса
                 for (float tempY = firstPt.x; tempY >= -7.0f; tempY -= 0.1f) {
                     float tempZ = firstPt.y + kLeft * (tempY - firstPt.x);
-                    float slopeZ = getProjectHeight(tempY);
+                    float slopeZ = geometryService.getProjectHeight(tempY);
                     if (tempZ >= slopeZ) {
                         extLeftY = tempY;
                         extLeftZ = slopeZ;
@@ -1183,13 +1120,13 @@ public class Georadar3DViewer extends Application {
                 layerPolyline.getPoints().addAll(mapY.apply(extLeftY), mapZ.apply(extLeftZ));
 
                 // Добавляем все основные реальные точки радарного сканирования
-                for (java.awt.geom.Point2D.Float pt : currentLayerPoints) {
+                for (Point2D.Float pt : currentLayerPoints) {
                     layerPolyline.getPoints().addAll(mapY.apply(pt.x), mapZ.apply(pt.y));
                 }
 
                 // --- 7.2. РАСЧЕТ ПРАВОЙ ВРЕЗКИ (РАЗРЕШАЕМ ДВИЖЕНИЕ ДО ПОДОШВЫ Y = 16.425м) ---
-                java.awt.geom.Point2D.Float lastPt = currentLayerPoints.get(currentLayerPoints.size() - 1);
-                java.awt.geom.Point2D.Float prevLastPt = currentLayerPoints.get(currentLayerPoints.size() - 2);
+                Point2D.Float lastPt = currentLayerPoints.get(currentLayerPoints.size() - 1);
+                Point2D.Float prevLastPt = currentLayerPoints.get(currentLayerPoints.size() - 2);
                 float kRight = (lastPt.y - prevLastPt.y) / (lastPt.x - prevLastPt.x + 0.001f);
 
                 float extRightY = 16.425f;
@@ -1198,7 +1135,7 @@ public class Georadar3DViewer extends Application {
                 // Идем пошагово вперед от правого плеча в поле
                 for (float tempY = lastPt.x; tempY <= 16.425f; tempY += 0.1f) {
                     float tempZ = lastPt.y + kRight * (tempY - lastPt.x);
-                    float slopeZ = getProjectHeight(tempY);
+                    float slopeZ = geometryService.getProjectHeight(tempY);
                     if (tempZ >= slopeZ) {
                         extRightY = tempY;
                         extRightZ = slopeZ;
@@ -1215,18 +1152,18 @@ public class Georadar3DViewer extends Application {
 
         // 8. ОТРЕСОВКА ОЧЕРТАНИЙ НАСЫПИ И ЗЕМЛЯНОГО ПОЛОТНА (Серый контур)
         float[] projectYGrid = {-7.0f, -1.0f, -0.6f, 0.0f, 1.775f, 3.55f, 4.15f, 4.7f, 5.275f, 5.875f, 7.65f, 9.425f, 10.025f, 10.425f, 16.425f};
-        javafx.scene.shape.Polyline embankmentPolyline = new javafx.scene.shape.Polyline();
+        Polyline embankmentPolyline = new Polyline();
         embankmentPolyline.setStroke(Color.rgb(100, 100, 100));
         embankmentPolyline.setStrokeWidth(2.0);
 
         for (float y : projectYGrid) {
-            float z = getProjectHeight(y);
+            float z = geometryService.getProjectHeight(y);
             embankmentPolyline.getPoints().addAll(mapY.apply(y), mapZ.apply(z));
         }
         crossSectionCanvas2D.getChildren().add(embankmentPolyline);
 
         // Линия горизонтального основания земли
-        javafx.scene.shape.Line groundLine = new javafx.scene.shape.Line(mapY.apply(-7.0f), mapZ.apply(-4.0f), mapY.apply(16.425f), mapZ.apply(-4.0f));
+        Line groundLine = new Line(mapY.apply(-7.0f), mapZ.apply(-4.0f), mapY.apply(16.425f), mapZ.apply(-4.0f));
         groundLine.setStroke(Color.rgb(120, 120, 120));
         groundLine.getStrokeDashArray().addAll(5.0, 5.0);
         crossSectionCanvas2D.getChildren().add(groundLine);
@@ -1282,7 +1219,7 @@ public class Georadar3DViewer extends Application {
 
             if (!l1Pts.isEmpty()) {
                 l1Pts.sort(Comparator.comparing(LayerPoint::getDistanceX));
-                zSurface = getInterpolatedZ(l1Pts, meterX);
+                zSurface = geometryService.getInterpolatedZ(l1Pts, meterX);
             } else {
                 z1Str = "  н/д  "; // Если даже дневная поверхность не отсканирована
             }
@@ -1297,7 +1234,7 @@ public class Georadar3DViewer extends Application {
             String z2Str = "  н/д  ";
             if (!l2Pts.isEmpty() && zSurface != Float.MIN_VALUE) {
                 l2Pts.sort(Comparator.comparing(LayerPoint::getDistanceX));
-                float absZ2 = getInterpolatedZ(l2Pts, meterX);
+                float absZ2 = geometryService.getInterpolatedZ(l2Pts, meterX);
                 float relativeDepth2 = zSurface - absZ2; // Считаем чистую глубину вниз
                 z2Str = String.format("%-7.2f", relativeDepth2);
             }
@@ -1314,7 +1251,7 @@ public class Georadar3DViewer extends Application {
             if (zSurface != Float.MIN_VALUE) {
                 if (!l3Pts.isEmpty()) {
                     l3Pts.sort(Comparator.comparing(LayerPoint::getDistanceX));
-                    float absZ3 = getInterpolatedZ(l3Pts, meterX);
+                    float absZ3 = geometryService.getInterpolatedZ(l3Pts, meterX);
                     z3Str = String.format("%-7.2f", (zSurface - absZ3));
                 } else {
                     // Если на оси пусто, берем интерполированную абсолютную Z чертежа
@@ -1361,7 +1298,7 @@ public class Georadar3DViewer extends Application {
             }
             if (!pts.isEmpty()) {
                 pts.sort(Comparator.comparing(LayerPoint::getDistanceX));
-                return getInterpolatedZ(pts, meterX);
+                return geometryService.getInterpolatedZ(pts, meterX);
             }
         }
         return Float.MIN_VALUE;

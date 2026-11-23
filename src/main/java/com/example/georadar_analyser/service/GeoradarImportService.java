@@ -19,9 +19,11 @@ public class GeoradarImportService {
 
     private static final Logger log = LoggerFactory.getLogger(GeoradarImportService.class);
     private final TrackSectionRepository sectionRepository;
+    private final GeometryService geometryService;
 
-    public GeoradarImportService(TrackSectionRepository sectionRepository) {
+    public GeoradarImportService(TrackSectionRepository sectionRepository, GeometryService geometryService) {
         this.sectionRepository = sectionRepository;
+        this.geometryService = geometryService;
     }
 
     /**
@@ -52,20 +54,7 @@ public class GeoradarImportService {
 
                 try {
                     float distanceX = (float) row.getCell(0).getNumericCellValue() / 100.0f;
-                    float lateralOffsetY = (float) row.getCell(1).getNumericCellValue() / 100.0f;
-
-                    // --- ГЕОДЕЗИЧЕСКИЙ АДАПТЕР ПРИВЯЗКИ ПРОФИЛЕЙ К СТРОИТЕЛЬНОМУ ШАБЛОНУ ---
-                    if (Math.abs(lateralOffsetY - 0.0f) < 0.1f) {
-                        lateralOffsetY = 0.000f;  // Профиль 1: Левое плечо 1-го пути мёртво в ноль
-                    } else if (Math.abs(lateralOffsetY - 1.5f) < 0.1f) {
-                        lateralOffsetY = 1.775f;  // Профиль 2: Ось 1-го пути СТРОГО ПО ЦЕНТРУ шпалы
-                    } else if (Math.abs(lateralOffsetY - 3.5f) < 0.1f) {
-                        lateralOffsetY = 4.7125f; // Профиль 3: Междупутье чётко по центру плоской трапеции!
-                    } else if (Math.abs(lateralOffsetY - 5.5f) < 0.1f) {
-                        lateralOffsetY = 7.650f;  // Профиль 4: Ось 2-го пути СТРОГО ПО ЦЕНТРУ второй шпалы
-                    } else if (Math.abs(lateralOffsetY - 7.0f) < 0.1f) {
-                        lateralOffsetY = 9.425f;  // Профиль 5: Правое плечо 2-го пути ложится на бровку балласта
-                    }
+                    float lateralOffsetY = geometryService.normalizeLateralOffset((float) row.getCell(1).getNumericCellValue() / 100.0f);
 
                     RadarProfile profile = profileCache.computeIfAbsent(lateralOffsetY, offset -> {
                         RadarProfile newProfile = new RadarProfile();
@@ -84,8 +73,8 @@ public class GeoradarImportService {
                             String layerName = "Слой " + (columnIndex - 1);
                             float rawDepthZ = (float) cell.getNumericCellValue() / 100.0f;
 
-                            // Физический уровень Z = Высота поверхности горба (0.40м) - Глубина из Excel
-                            float correctedDepthZ = getSurfaceHeight(lateralOffsetY) - rawDepthZ;
+                            // Физический уровень Z
+                            float correctedDepthZ = geometryService.getProjectHeight(lateralOffsetY) - rawDepthZ;
 
                             LayerPoint point = new LayerPoint();
                             point.setDistanceX(distanceX);
@@ -110,21 +99,5 @@ public class GeoradarImportService {
 
     private boolean isRowEmpty(Row row) {
         return row == null || row.getCell(0) == null || row.getCell(0).getCellType() == CellType.BLANK;
-    }
-
-    /**
-     * СИНХРОНИЗИРОВАННЫЙ СТРОИТЕЛЬНЫЙ ШАБЛОН ПОВЕРХНОСТИ (Жёсткие 0.40м по ГОСТ)
-     */
-    private float getSurfaceHeight(float lateralOffset) {
-        float hBallastTop   = 0.40f;
-        float hSubgradeZero = 0.0f;
-
-        if (Math.abs(lateralOffset - 0.000f) < 0.01f) return hBallastTop;
-        else if (Math.abs(lateralOffset - 1.775f) < 0.01f) return hBallastTop;
-        else if (Math.abs(lateralOffset - 4.7125f) < 0.01f) return hSubgradeZero;
-        else if (Math.abs(lateralOffset - 7.650f) < 0.01f) return hBallastTop;
-        else if (Math.abs(lateralOffset - 9.425f) < 0.01f) return hBallastTop;
-
-        return hSubgradeZero;
     }
 }
